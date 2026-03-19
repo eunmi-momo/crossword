@@ -115,62 +115,47 @@ function applyUnderscoreHint(word: string, hint: string): string {
   return h + " (" + underscore(w) + ")";
 }
 
-/* ───────── 힌트 검증/복구 ───────── */
+/* ───────── 기사에서 문장 추출 ───────── */
 
-function findOriginalSentence(word: string, text: string): string | null {
-  const normalized = text.replace(/\n+/g, " ");
-  const sentences = normalized
-    .split(/(?<=[.!?다요])\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length >= 8);
+type ExtractedSentence = {
+  idx: number;
+  sentence: string;
+  articleIdx: number;
+  link: string;
+};
 
-  for (const s of sentences) {
-    if (s.includes(word)) return s;
-  }
-  for (const s of sentences) {
-    for (const p of KO_PARTICLES) {
-      if (s.includes(word + p)) return s;
+function extractSentences(news: NewsItem[]): ExtractedSentence[] {
+  const result: ExtractedSentence[] = [];
+  let globalIdx = 1;
+
+  for (let ai = 0; ai < news.length; ai++) {
+    const n = news[ai]!;
+    const fullText = [n.title, n.summary, n.content]
+      .filter(Boolean)
+      .join(". ")
+      .replace(/\n+/g, " ");
+
+    const raw = fullText
+      .split(/(?<=[.!?])\s+/)
+      .flatMap((s) => s.split(/(?<=다[\.\s])/))
+      .map((s) => s.trim())
+      .filter((s) => s.length >= 10 && /[가-힣]/.test(s));
+
+    const seen = new Set<string>();
+    for (const s of raw) {
+      const normalized = s.replace(/\s+/g, " ");
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      result.push({
+        idx: globalIdx++,
+        sentence: normalized,
+        articleIdx: ai + 1,
+        link: n.link,
+      });
     }
   }
-  return null;
-}
 
-function validateItems(
-  items: Array<{ word: string; hint: string; definition: string; link: string }>,
-  newsItems: NewsItem[],
-): Array<{ word: string; hint: string; definition: string; link: string }> {
-  const textByLink = new Map<string, string>();
-  for (const n of newsItems) {
-    textByLink.set(n.link, [n.title, n.summary, n.content].join(" "));
-  }
-
-  return items
-    .map((item) => {
-      const fullText = textByLink.get(item.link);
-      if (!fullText) return null;
-
-      const wordExists =
-        fullText.includes(item.word) ||
-        KO_PARTICLES.some((p) => fullText.includes(item.word + p));
-      if (!wordExists) return null;
-
-      const restored = item.hint.replace(/_{2,}/g, item.word);
-      const parts = restored
-        .split(item.word)
-        .map((p) => p.trim().replace(/^[^가-힣a-zA-Z0-9]+|[^가-힣a-zA-Z0-9]+$/g, ""))
-        .filter((p) => p.length >= 4);
-
-      const hintValid = parts.some((part) => fullText.includes(part));
-      if (hintValid) return item;
-
-      const realSentence = findOriginalSentence(item.word, fullText);
-      if (realSentence) {
-        return { ...item, hint: applyUnderscoreHint(item.word, realSentence) };
-      }
-
-      return item;
-    })
-    .filter((item): item is NonNullable<typeof item> => item !== null);
+  return result;
 }
 
 /* ───────── 격자 배치 알고리즘 ───────── */
@@ -515,30 +500,13 @@ export async function generatePuzzle(
 
   const client = new OpenAI({ apiKey });
 
-  const numbered = news.slice(0, NEWS_CONTEXT_COUNT).map((n, i) => ({
-    idx: i + 1,
-    title: n.title,
-    summary: n.summary,
-    content: n.content,
-    keywords: n.keywords,
-    link: n.link,
-  }));
+  const sentences = extractSentences(news.slice(0, NEWS_CONTEXT_COUNT));
+  const sentenceMap = new Map<number, ExtractedSentence>();
+  for (const s of sentences) sentenceMap.set(s.idx, s);
 
-  const newsContext = numbered
-    .map((n) => {
-      const parts = [
-        `[번호] ${n.idx}`,
-        `[제목] ${n.title}`,
-        `[요약] ${n.summary}`,
-      ];
-      if (n.content && n.content.trim()) {
-        parts.push(`[본문] ${n.content.trim()}`);
-      }
-      parts.push(`[키워드] ${n.keywords.join(", ")}`);
-      parts.push(`[링크] ${n.link}`);
-      return parts.join("\n");
-    })
-    .join("\n\n---\n\n");
+  const sentenceList = sentences
+    .map((s) => `[${s.idx}] ${s.sentence}`)
+    .join("\n");
 
   const response = await client.chat.completions.create({
     model: "gpt-4o",
@@ -546,33 +514,31 @@ export async function generatePuzzle(
       {
         role: "system",
         content: `너는 한국어 크로스워드 퍼즐 출제자다.
-규칙을 반드시 지켜라:
-1. 정답 단어(word)와 힌트(hint)는 오직 사용자가 제공한 뉴스 텍스트([제목][요약][본문][키워드]) 안에 나온 내용만 사용한다.
-2. 위 뉴스에 없는 단어, 없는 사실, 만들어낸 내용은 절대 사용하지 않는다.
-3. word는 반드시 해당 기사의 [제목], [요약], [본문] 텍스트에 그대로 등장하는 2~5글자 한국어 단어만 쓴다. 텍스트에 없는 단어를 만들어내지 마라.
-4. 단어들 사이에 공통 글자가 최대한 많도록 골라라. 예: "경찰"과 "찰과상" → '찰'에서 교차 가능. 서로 겹치는 글자가 있는 단어를 우선 선택해라.
-5. hint는 반드시 해당 기사 텍스트([제목], [요약], [본문])에서 정답 단어가 포함된 문장을 **한 글자도 바꾸지 않고 원문 그대로 복사**한 뒤, 정답 단어 부분만 밑줄(_)로 치환한 것이어야 한다.
-   - 원문에 없는 문장을 새로 작성하면 절대 안 된다.
-   - 원문을 요약하거나, 의역하거나, 재구성하면 절대 안 된다.
-   - 반드시 제공된 텍스트에 실제로 존재하는 문장을 그대로 복사해야 한다.
-6. hint에는 밑줄(_)이 반드시 포함되어야 한다. 밑줄이 없는 hint는 잘못된 것이다.
-   - 밑줄(_) 개수는 word의 글자 수와 정확히 동일해야 한다. (2글자: __, 3글자: ___, 4글자: ____, 5글자: _____)
-   - 예: 원문이 "경찰이 현장에 출동했다"이고 word가 "경찰"이면 → hint: "__이 현장에 출동했다" (O)
-   - 예: 원문이 "고속도로에서 사고가 발생했다"이고 word가 "사고"이면 → hint: "고속도로에서 __가 발생했다" (O)
-   - "법 집행기관이 출동했다" 같이 원문에 없는 문장을 만들어내면 안 된다 (X)
-7. definition에는 정답 단어의 사전적 의미를 국어사전 스타일로 한 문장으로 쓴다. 쉬운 말로 쓴다.
-8. 응답은 반드시 {"items": [{"word":"...", "hint":"...", "definition":"...", "link":"..."}, ...]} 형태의 JSON만 출력한다. 다른 말 없이 JSON만.`,
+
+사용자가 번호가 붙은 문장 목록을 제공한다. 이 문장들은 실제 뉴스 기사 원문에서 추출한 것이다.
+
+너의 역할:
+1. 각 문장에서 크로스워드 정답으로 적합한 2~5글자 한국어 단어를 찾아라.
+2. 반드시 해당 문장 안에 그대로 등장하는 단어만 골라라.
+3. 단어들 사이에 공통 글자가 최대한 많도록 골라라 (크로스워드 교차를 위해).
+   예: "경찰"과 "경기" → '경'에서 교차 가능.
+4. definition에는 정답 단어의 사전적 의미를 국어사전 스타일로 한 문장으로 쓴다.
+5. 총 ${GPT_WORD_COUNT}개 문항을 만들어라.
+
+응답 형식 (JSON만 출력, 다른 말 없이):
+{"items": [{"word": "단어", "sentence_idx": 번호, "definition": "사전적 의미"}, ...]}
+
+- word: 해당 문장에 실제로 들어있는 2~5글자 단어
+- sentence_idx: 해당 단어가 포함된 문장의 번호 (사용자가 제공한 [번호])
+- definition: 단어의 사전적 의미 (쉬운 말, 한 문장)`,
       },
       {
         role: "user",
-        content: `아래는 오늘의 SBS 뉴스 기사들이고 각 기사에는 [번호]와 [링크]가 있다. [본문]이 있는 기사는 실제 기사 본문이다. 이 텍스트만 보고 크로스워드 문항 ${GPT_WORD_COUNT}개를 만들어라.
-각 문항의 word는 반드시 아래 텍스트에 그대로 등장한 2~5글자 단어여야 하고, hint는 해당 단어가 포함된 원문 문장을 그대로 가져와야 한다. 각 문항에는 해당 단어가 나온 기사 [링크]도 포함해라. definition에 정답 단어의 사전적 의미(쉬운 말, 한 문장)를 포함해라.
+        content: `아래 문장들에서 크로스워드 문항 ${GPT_WORD_COUNT}개를 만들어라.
+각 문항의 word는 반드시 해당 sentence_idx 문장 안에 그대로 존재하는 2~5글자 단어여야 한다.
+단어들 사이에 공통 글자가 많은 조합을 우선 선택해라.
 
-중요: 단어들 사이에 공통 글자가 최대한 많도록 골라라. 크로스워드에서 가로/세로가 교차할 수 있게 같은 글자를 공유하는 단어 조합을 우선 선택해라. 예: "경찰"과 "경기" → '경'에서 교차, "사고"와 "고장" → '고'에서 교차. 이런 식으로 2글자 이상 겹치는 조합을 많이 만들어라.
-
-★ 핵심 규칙: hint는 반드시 위 텍스트에서 해당 단어가 포함된 문장을 한 글자도 바꾸지 않고 그대로 복사한 뒤, 정답 단어만 밑줄(_)로 치환해야 한다. 문장을 수정하거나 새로 만들면 절대 안 된다. 기사에 "검찰은 규정 위반 혐의로 조사했다"라는 문장이 있고 word가 "검찰"이면, hint는 "__은 규정 위반 혐의로 조사했다"여야 한다.
-
-${newsContext}`,
+${sentenceList}`,
       },
     ],
     response_format: { type: "json_object" },
@@ -583,32 +549,42 @@ ${newsContext}`,
     throw new Error("GPT-4o가 빈 응답을 반환했습니다.");
   }
 
-  const parsed = JSON.parse(raw) as { items?: PuzzleItem[] };
+  const parsed = JSON.parse(raw) as {
+    items?: Array<{ word?: string; sentence_idx?: number; definition?: string }>;
+  };
   const items = parsed.items ?? [];
 
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error("GPT-4o 응답에서 문항 배열을 찾을 수 없습니다.");
   }
 
-  const normalized = items.slice(0, GPT_WORD_COUNT).map((item) => {
-    const word = String(item?.word ?? "")
-      .trim()
-      .replace(/\s+/g, "")
-      .slice(0, 5);
-    const hint = String(item?.hint ?? "").trim();
-    const definition = String((item as Partial<PuzzleItem>)?.definition ?? "").trim();
-    const link = String(item?.link ?? "").trim();
-    return { word, hint: applyUnderscoreHint(word, hint), definition, link };
-  });
+  const entries: WordEntry[] = [];
+  const usedWords = new Set<string>();
 
-  const entries = normalized
-    .filter((x) => x.word.length >= 2 && x.word.length <= 5)
-    .filter((x, idx, arr) => arr.findIndex((y) => y.word === x.word) === idx);
+  for (const item of items) {
+    const word = String(item?.word ?? "").trim().replace(/\s+/g, "").slice(0, 5);
+    if (word.length < 2 || word.length > 5) continue;
+    if (usedWords.has(word)) continue;
 
-  const validated = validateItems(entries, news);
-  const result = buildCrossword(validated.length >= PUZZLE_COUNT ? validated : entries);
+    const sIdx = Number(item?.sentence_idx ?? 0);
+    const sentenceData = sentenceMap.get(sIdx);
+    if (!sentenceData) continue;
 
-  // 최종 13x13 보장
+    const wordInSentence =
+      sentenceData.sentence.includes(word) ||
+      KO_PARTICLES.some((p) => sentenceData.sentence.includes(word + p));
+    if (!wordInSentence) continue;
+
+    const hint = applyUnderscoreHint(word, sentenceData.sentence);
+    const definition = String(item?.definition ?? "").trim();
+    const link = sentenceData.link;
+
+    usedWords.add(word);
+    entries.push({ word, hint, definition, link });
+  }
+
+  const result = buildCrossword(entries);
+
   const finalGrid =
     result.grid.length === GRID_SIZE && result.grid[0]?.length === GRID_SIZE
       ? result.grid
