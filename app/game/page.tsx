@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { GeneratedCrossword, PlacedPuzzleItem } from "@/lib/generatePuzzle";
 import {
   bustPuzzlePrefetch,
@@ -10,6 +10,7 @@ import {
   prefetchTodayPuzzle,
 } from "@/lib/puzzlePrefetch";
 import { withBasePath } from "@/lib/basePath";
+import { buildShareLandingUrl } from "@/lib/siteUrl";
 
 type CellKey = `${number},${number}`;
 
@@ -74,6 +75,7 @@ function formatTimer(seconds: number): string {
 
 export default function CrosswordGamePage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [query, setQuery] = useState<{
     name?: string;
     promptName?: string;
@@ -110,6 +112,20 @@ export default function CrosswordGamePage() {
   const rankingSaveStartedRef = useRef(false);
   const [mobileAllCluesOpen, setMobileAllCluesOpen] = useState(false);
 
+  /** 개발·디자인용: 완료 팝업만 바로 보기 (`?previewComplete=1` …) */
+  const [completePreview, setCompletePreview] = useState<{
+    rank: number;
+    timeSec: number;
+  } | null>(null);
+  const [completePreviewDismissed, setCompletePreviewDismissed] = useState(false);
+
+  /** URL 파싱 전에는 이름 유무를 모름 → 모달 깜빡임 방지 */
+  const [urlHydrated, setUrlHydrated] = useState(false);
+  const [nameGateDraft, setNameGateDraft] = useState("");
+  const nameGateInputRef = useRef<HTMLInputElement | null>(null);
+  /** 친구에게 자랑하기: URL 복사 후 버튼 위 툴팁 */
+  const [bragTooltip, setBragTooltip] = useState<string | null>(null);
+
   useEffect(() => {
     activeIdRef.current = activeId;
     if (activeId == null) return;
@@ -123,15 +139,49 @@ export default function CrosswordGamePage() {
     if (phase !== "playing") setMobileAllCluesOpen(false);
   }, [phase]);
 
-  const isInteractive = phase === "playing";
+  const trimmedUrlName = (nameFromQuery ?? "").trim();
+  const showNameGate =
+    urlHydrated &&
+    !trimmedUrlName &&
+    completePreview == null;
+
+  const isInteractive = phase === "playing" && !showNameGate;
 
   // URL 쿼리 파싱: useSearchParams 대신 suspense 이슈를 피하기 위해 직접 읽습니다.
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
-    const name = sp.get("name") ?? undefined;
-    const promptName = sp.get("promptName") ?? undefined;
+    const rawName = sp.get("name");
+    const name =
+      rawName != null && rawName.trim() !== "" ? rawName.trim() : undefined;
+    const rawPrompt = sp.get("promptName");
+    const promptName =
+      rawPrompt != null && rawPrompt.trim() !== ""
+        ? rawPrompt.trim()
+        : undefined;
     setQuery({ name, promptName });
     if (sp.get("newpuzzle") === "1") bustFirstPuzzleLoadRef.current = true;
+
+    if (sp.get("previewComplete") === "1") {
+      const rankRaw = sp.get("previewRank");
+      const timeRaw = sp.get("previewTime");
+      setCompletePreview({
+        rank:
+          rankRaw != null &&
+          rankRaw !== "" &&
+          Number.isFinite(Number(rankRaw))
+            ? Number(rankRaw)
+            : 3,
+        timeSec:
+          timeRaw != null &&
+          timeRaw !== "" &&
+          Number.isFinite(Number(timeRaw))
+            ? Number(timeRaw)
+            : 128,
+      });
+    } else {
+      setCompletePreview(null);
+    }
+    setUrlHydrated(true);
   }, []);
 
   async function loadPuzzle(options?: { background?: boolean; bust?: boolean }) {
@@ -169,12 +219,29 @@ export default function CrosswordGamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 타이머: playing 동안만 1초 증가 (정답 완성 시 멈춤)
+  // 타이머: playing 동안만 1초 증가 (정답 완성 시 멈춤). 이름 입력 모달이 떠 있으면 대기.
   useEffect(() => {
-    if (phase !== "playing" || timerFrozen) return;
+    if (phase !== "playing" || timerFrozen || showNameGate) return;
     const id = window.setInterval(() => setTimeSec((t) => t + 1), 1000);
     return () => window.clearInterval(id);
-  }, [phase, timerFrozen]);
+  }, [phase, timerFrozen, showNameGate]);
+
+  useEffect(() => {
+    if (!urlHydrated || trimmedUrlName) return;
+    if (promptNameFromQuery) setNameGateDraft(promptNameFromQuery);
+  }, [urlHydrated, trimmedUrlName, promptNameFromQuery]);
+
+  useEffect(() => {
+    if (!showNameGate) return;
+    const id = requestAnimationFrame(() => nameGateInputRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [showNameGate]);
+
+  useEffect(() => {
+    if (!bragTooltip) return;
+    const t = window.setTimeout(() => setBragTooltip(null), 2200);
+    return () => window.clearTimeout(t);
+  }, [bragTooltip]);
 
   const grid = data?.grid ?? null;
   const words = data?.words ?? null;
@@ -230,6 +297,27 @@ export default function CrosswordGamePage() {
     }
     return nums;
   }, [grid, placements, size.height, size.width]);
+
+  // 완료 팝업만 바로 보기: `?previewComplete=1` (+ 선택 `&name=`, `&previewRank=`, `&previewTime=초`)
+  useEffect(() => {
+    if (completePreview == null || completePreviewDismissed) return;
+    if (loading || !data || !grid || !numbersGrid) return;
+    setPhase("complete");
+    setTimeSec(completePreview.timeSec);
+    setTimerFrozen(true);
+    setSaved(true);
+    const hasName = (nameFromQuery ?? "").trim().length > 0;
+    setMyRank(hasName ? completePreview.rank : null);
+    rankingSaveStartedRef.current = true;
+  }, [
+    completePreview,
+    completePreviewDismissed,
+    loading,
+    data,
+    grid,
+    numbersGrid,
+    nameFromQuery,
+  ]);
 
   const acrossList = useMemo(
     () =>
@@ -454,6 +542,32 @@ export default function CrosswordGamePage() {
     lastClickedCellRef.current = null;
   }
 
+  function commitGameNameGate() {
+    const n = nameGateDraft.trim();
+    if (!n) return;
+    const sp = new URLSearchParams(window.location.search);
+    sp.set("name", n);
+    const qs = sp.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+    setQuery((prev) => ({ ...prev, name: n }));
+    const day = todayKSTYmd();
+    void prefetchTodayPuzzle(day);
+  }
+
+  async function handleBragShareCopyUrl() {
+    const timeMmSs = formatTimer(timeSec);
+    const linkUrl = buildShareLandingUrl({
+      rank: myRank,
+      timeMmSs,
+    });
+    try {
+      await navigator.clipboard.writeText(linkUrl);
+      setBragTooltip("URL이 복사되었습니다");
+    } catch {
+      setBragTooltip("복사에 실패했습니다");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
@@ -509,6 +623,47 @@ export default function CrosswordGamePage() {
             </p>
           </div>
         </header>
+
+        {/* 이름 없이 /game 직접 진입 시: 랭킹용 이름 입력 (딤 + 레이어) */}
+        {showNameGate && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 sm:p-6">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="game-name-gate-title"
+              className="w-full max-w-sm rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-xl sm:p-8"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <h2
+                id="game-name-gate-title"
+                className="text-center text-xl font-extrabold text-[var(--card-foreground)] sm:text-2xl"
+              >
+                게임할 준비가 되셨나요?
+              </h2>
+              <div className="mt-6 flex flex-col gap-3">
+                <input
+                  ref={nameGateInputRef}
+                  value={nameGateDraft}
+                  onChange={(e) => setNameGateDraft(e.target.value)}
+                  onFocus={() => void prefetchTodayPuzzle(todayKSTYmd())}
+                  placeholder="이름을 입력하세요"
+                  maxLength={20}
+                  className="w-full rounded-xl border-2 border-[var(--primary)] bg-[var(--card)] px-4 py-3 text-center text-sm text-[var(--card-foreground)] outline-none placeholder:text-[var(--card-muted)] focus:ring-2 focus:ring-[var(--primary)]"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitGameNameGate();
+                  }}
+                />
+                <button
+                  type="button"
+                  className="inline-flex w-full items-center justify-center rounded-full bg-[var(--primary)] px-6 py-4 text-base font-bold text-white shadow-md transition hover:opacity-90"
+                  onClick={() => commitGameNameGate()}
+                >
+                  오늘의 퀴즈 도전하기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {loading && (
           <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-8 text-center text-[var(--card-muted)]">
@@ -910,7 +1065,7 @@ export default function CrosswordGamePage() {
           </div>
         )}
 
-        {/* Complete overlay */}
+        {/* Complete overlay — 미리보기: /game?previewComplete=1 (README 참고) */}
         {phase === "complete" && (
           <div className="fixed inset-0 z-[70] grid place-items-center bg-black/30 p-4 sm:p-6">
             <div className="w-full max-w-sm rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-8 shadow-xl text-center">
@@ -932,7 +1087,9 @@ export default function CrosswordGamePage() {
                   </p>
                 ) : myRank != null ? (
                   <div className="mt-4 rounded-xl bg-[var(--primary)]/10 px-6 py-4">
-                    <p className="text-sm text-[var(--card-muted)]">당신의 순위</p>
+                    <p className="text-sm text-[var(--card-muted)]">
+                      {(nameFromQuery ?? "").trim()}님의 순위
+                    </p>
                     <p className="mt-1 text-3xl font-extrabold text-[var(--primary)]">
                       {myRank}위
                     </p>
@@ -959,29 +1116,51 @@ export default function CrosswordGamePage() {
                 >
                   오늘의 랭킹 보기
                 </button>
-                <button
-                  type="button"
-                  className="w-full rounded-full border border-[var(--card-border)] bg-transparent px-4 py-3 text-sm font-semibold text-[var(--card-foreground)] hover:bg-[#5055fa]/10"
-                  onClick={() => {
-                    setInputs({});
-                    activeIdRef.current = null;
-                    setActiveId(null);
-                    lastClickedCellRef.current = null;
-                    setError(null);
-                    setTimeSec(0);
-                    setTimerFrozen(false);
-                    setSaved(false);
-                    setMyRank(null);
-                    rankingSaveStartedRef.current = false;
-                    setPhase("playing");
-                  }}
-                >
-                  다시 풀기
-                </button>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    className="w-full rounded-full border border-[var(--card-border)] bg-transparent px-3 py-3 text-sm font-semibold text-[var(--card-foreground)] hover:bg-[#5055fa]/10"
+                    onClick={() => {
+                      setCompletePreviewDismissed(true);
+                      setInputs({});
+                      activeIdRef.current = null;
+                      setActiveId(null);
+                      lastClickedCellRef.current = null;
+                      setError(null);
+                      setTimeSec(0);
+                      setTimerFrozen(false);
+                      setSaved(false);
+                      setMyRank(null);
+                      rankingSaveStartedRef.current = false;
+                      setPhase("playing");
+                    }}
+                  >
+                    다시 풀기
+                  </button>
+                  <div className="relative flex min-h-[48px] items-center justify-center">
+                    {bragTooltip ? (
+                      <div
+                        className="absolute bottom-full left-1/2 z-10 mb-2 w-max max-w-[calc(100vw-1.5rem)] -translate-x-1/2 whitespace-nowrap rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white shadow-lg"
+                        role="tooltip"
+                      >
+                        {bragTooltip}
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="w-full rounded-full bg-amber-400 px-3 py-3 text-sm font-bold text-neutral-900 shadow-md transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={!saved}
+                      onClick={() => void handleBragShareCopyUrl()}
+                    >
+                      친구에게 자랑하기
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );

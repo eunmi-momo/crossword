@@ -27,6 +27,25 @@ npm run dev
 
 브라우저: **[http://localhost:3100/crossword](http://localhost:3100/crossword)** (`basePath: /crossword`, 포트 **3100**)
 
+### 게임 완료 팝업 미리보기
+
+퍼즐을 끝까지 풀지 않고 **축하 팝업 UI만** 보려면 게임 URL에 쿼리를 붙이세요.
+
+- 기본(이름 없음·시간만):  
+  `http://localhost:3100/crossword/game?previewComplete=1`
+- 순위 박스까지(이름 + 순위 + 시간):  
+  `http://localhost:3100/crossword/game?previewComplete=1&name=테스트&previewRank=2&previewTime=95`
+
+`previewRank`·`previewTime`을 생략하면 순위 **3위**, 시간 **2:08(128초)** 샘플이 들어갑니다. **다시 풀기**를 누르면 미리보기 강제 종료 후 일반 플레이로 돌아갑니다.
+
+게임 URL에 **`name` 없이** `/game`만 열면(직접 주소 입력 등) 전체 화면 딤 + **이름 입력 레이어**가 먼저 뜹니다. `?previewComplete=1` 미리보기일 때는 이 레이어를 띄우지 않습니다.
+
+### 공유 · OG 이미지
+
+- **동적 OG 이미지 (1200×630):** `app/opengraph-image.tsx` → 배포 URL 기준 **`/crossword/opengraph-image?rank=2&time=01%3A35`**
+- **랜딩 공유 URL:** `/crossword?rank=…&time=…` (완료 팝업 **친구에게 자랑하기** 클릭 시 클립보드에 복사 · 메타·썸네일 연동)
+- 환경 변수: **`.env.example`** 참고 (`NEXT_PUBLIC_SITE_URL`)
+
 ## 퍼즐이 안 바뀔 때
 
 - `/crossword/api/puzzle`은 **오늘 날짜** 기준 DB(또는 생성) 한 세트를 돌려줍니다.
