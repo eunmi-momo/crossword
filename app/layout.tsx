@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Nanum_Gothic } from "next/font/google";
+import { ClientPuzzleWarmup } from "@/components/ClientPuzzleWarmup";
 import "./globals.css";
 
 const nanumGothic = Nanum_Gothic({
@@ -22,6 +23,7 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body className={`${nanumGothic.variable} ${nanumGothic.className} font-sans antialiased`}>
+        <ClientPuzzleWarmup />
         {children}
       </body>
     </html>

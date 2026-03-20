@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { GeneratedCrossword, PlacedPuzzleItem } from "@/lib/generatePuzzle";
+import {
+  bustPuzzlePrefetch,
+  getPrefetchedPuzzle,
+  prefetchTodayPuzzle,
+} from "@/lib/puzzlePrefetch";
 
 type CellKey = `${number},${number}`;
 
@@ -74,11 +79,15 @@ export default function CrosswordGamePage() {
 
   const nameFromQuery = query.name;
   const promptNameFromQuery = query.promptName;
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    const day = todayKSTYmd();
+    return getPrefetchedPuzzle(day) == null;
+  });
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<GeneratedCrossword | null>(null);
-  /** 동시에 두 번 호출될 때만 공유. 완료 후 null → 다음 로드는 항상 새 네트워크 요청 */
-  const inflightRef = useRef<Promise<GeneratedCrossword> | null>(null);
+  const [data, setData] = useState<GeneratedCrossword | null>(() => {
+    const day = todayKSTYmd();
+    return getPrefetchedPuzzle(day);
+  });
   const bustFirstPuzzleLoadRef = useRef(false);
 
   const [phase, setPhase] = useState<"start" | "playing" | "complete">("start");
@@ -123,48 +132,31 @@ export default function CrosswordGamePage() {
     try {
       if (!background) setLoading(true);
       setError(null);
-
-      if (bust) inflightRef.current = null;
-
-      if (!inflightRef.current) {
-        const day = todayKSTYmd();
-        const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-        inflightRef.current = (async () => {
-          const res = await fetch(
-            `/api/puzzle?day=${encodeURIComponent(day)}&_=${encodeURIComponent(stamp)}`,
-            {
-              cache: "no-store",
-              headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-            }
-          );
-          const json = (await res.json()) as GeneratedCrossword | { error: string };
-          if (!res.ok)
-            throw new Error(
-              (json as { error: string })?.error ?? "불러오기 실패"
-            );
-          return json as GeneratedCrossword;
-        })().finally(() => {
-          inflightRef.current = null;
-        });
-      }
-
-      const puzzle = await inflightRef.current;
+      if (bust) bustPuzzlePrefetch();
+      const day = todayKSTYmd();
+      const puzzle = await prefetchTodayPuzzle(day);
       setData(puzzle);
     } catch (e) {
       setError(e instanceof Error ? e.message : "오류가 발생했습니다.");
-      inflightRef.current = null;
+      bustPuzzlePrefetch();
     } finally {
       if (!background) setLoading(false);
     }
   }
 
-  // 페이지 진입 시 한 번만 로드 (백그라운드 이중 요청 제거 → 오래된 Promise 재사용 방지)
+  // 페이지 진입 시: 미리 받아 둔 캐시(메인·레이아웃) 있으면 네트워크 대기 없이 표시
   useEffect(() => {
     if (phase !== "start") return;
     setSaved(false);
     setPhase("playing");
     const bust = bustFirstPuzzleLoadRef.current;
     bustFirstPuzzleLoadRef.current = false;
+    const day = todayKSTYmd();
+    if (!bust && getPrefetchedPuzzle(day)) {
+      setData(getPrefetchedPuzzle(day)!);
+      setLoading(false);
+      return;
+    }
     void loadPuzzle({ background: false, bust });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

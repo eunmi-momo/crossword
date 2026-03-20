@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { prefetchTodayPuzzle } from "@/lib/puzzlePrefetch";
 
 type RankingRow = {
   id: number;
@@ -61,10 +62,15 @@ export default function HomePage() {
 
   useEffect(() => {
     void load();
+    void prefetchTodayPuzzle(today);
     const id = window.setInterval(load, 30000);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function warmPuzzle() {
+    void prefetchTodayPuzzle(today);
+  }
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -98,6 +104,7 @@ export default function HomePage() {
             <input
               value={nameDraft}
               onChange={(e) => setNameDraft(e.target.value)}
+              onFocus={warmPuzzle}
               placeholder="이름을 입력하세요"
               className="w-full rounded-xl border-2 border-[var(--primary)] bg-[var(--card)] px-4 py-3 text-center text-sm text-[var(--card-foreground)] outline-none placeholder:text-[var(--card-muted)] focus:ring-2 focus:ring-[var(--primary)]"
               maxLength={20}
@@ -111,6 +118,8 @@ export default function HomePage() {
             <button
               type="button"
               className="inline-flex w-full items-center justify-center rounded-full bg-[var(--primary)] px-8 py-4 text-base font-bold text-white shadow-md transition hover:opacity-90"
+              onMouseEnter={warmPuzzle}
+              onFocus={warmPuzzle}
               onClick={() => {
                 const n = nameDraft.trim();
                 if (!n) return;
