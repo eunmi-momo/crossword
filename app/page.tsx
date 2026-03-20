@@ -78,7 +78,7 @@ export default function HomePage() {
         {/* 좌측 상단 SBS NEWS */}
         <header className="mb-10">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo/sbsnews.svg" alt="SBS NEWS" className="h-6 sm:h-7" />
+          <img src="/logo/sbsnews.svg" alt="SBS NEWS" className="h-4 sm:h-5" />
         </header>
 
         {/* 크로스워드 소개 박스 */}

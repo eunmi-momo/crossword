@@ -445,7 +445,7 @@ export default function CrosswordGamePage() {
         <header className="mb-6">
           <div className="text-left">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo/sbsnews.svg" alt="SBS NEWS" className="h-6 sm:h-7" />
+            <img src="/logo/sbsnews.svg" alt="SBS NEWS" className="h-4 sm:h-5" />
           </div>
           <div className="mt-4 text-center">
             <p className="text-sm font-semibold uppercase tracking-widest text-[var(--primary)] sm:text-base">
@@ -476,9 +476,9 @@ export default function CrosswordGamePage() {
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-stretch lg:h-[calc(100vh-240px)] overflow-hidden">
             {/* Left: Grid */}
             <div className="lg:h-full lg:overflow-hidden lg:flex lg:flex-col">
-              <div className="mb-2 flex h-8 items-center">
+              <div className="mb-2 flex h-8 min-h-8 items-center gap-3">
                 {phase === "playing" ? (
-                  <div className="inline-flex items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-1.5 text-sm font-bold text-white shadow-sm">
+                  <div className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-1.5 text-sm font-bold text-white shadow-sm">
                     <svg
                       aria-hidden="true"
                       viewBox="0 0 24 24"
@@ -495,7 +495,10 @@ export default function CrosswordGamePage() {
                     </svg>
                     {formatTimer(timeSec)}
                   </div>
-                ) : <span className="text-sm">&nbsp;</span>}
+                ) : null}
+                <p className="text-sm font-semibold text-[var(--muted)]">
+                  {todayKST()}
+                </p>
               </div>
               <section className="relative rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:p-6 lg:flex-1 lg:min-h-0 lg:flex lg:items-center lg:justify-center lg:overflow-hidden">
                 {/* 격자: 카드 내부에 맞춤. 정사각형 유지. */}
@@ -596,9 +599,7 @@ export default function CrosswordGamePage() {
 
             {/* Right: Clues (2 columns: across / down) */}
             <div className="lg:h-full lg:overflow-hidden lg:flex lg:flex-col">
-              <div className="mb-2 flex h-8 items-end justify-end">
-                <p className="text-sm font-semibold text-[var(--muted)]">{todayKST()}</p>
-              </div>
+              <div className="mb-2 h-8 min-h-8 shrink-0" aria-hidden />
               <aside className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:p-6 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
               <div className="grid h-full min-h-0 gap-6 sm:grid-cols-2">
                 {([
