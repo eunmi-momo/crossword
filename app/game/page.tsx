@@ -125,6 +125,12 @@ export default function CrosswordGamePage() {
   const nameGateInputRef = useRef<HTMLInputElement | null>(null);
   /** 친구에게 자랑하기: URL 복사 후 버튼 위 툴팁 */
   const [bragTooltip, setBragTooltip] = useState<string | null>(null);
+  /** 축하 팝업 닫기(격자는 유지, phase는 complete) */
+  const [completeModalDismissed, setCompleteModalDismissed] = useState(false);
+
+  useEffect(() => {
+    if (phase !== "complete") setCompleteModalDismissed(false);
+  }, [phase]);
 
   useEffect(() => {
     activeIdRef.current = activeId;
@@ -1066,9 +1072,29 @@ export default function CrosswordGamePage() {
         )}
 
         {/* Complete overlay — 미리보기: /game?previewComplete=1 (README 참고) */}
-        {phase === "complete" && (
+        {phase === "complete" && !completeModalDismissed && (
           <div className="fixed inset-0 z-[70] grid place-items-center bg-black/30 p-4 sm:p-6">
-            <div className="w-full max-w-sm rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-8 shadow-xl text-center">
+            <div className="relative w-full max-w-sm rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-8 pt-10 shadow-xl text-center">
+              <button
+                type="button"
+                className="absolute right-2 top-2 rounded-full p-2 text-[var(--card-muted)] transition hover:bg-black/5 hover:text-[var(--card-foreground)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+                aria-label="닫기"
+                onClick={() => setCompleteModalDismissed(true)}
+              >
+                <svg
+                  aria-hidden
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </button>
               <h2 className="text-3xl font-extrabold text-[var(--card-foreground)]">
                 축하합니다!
               </h2>
