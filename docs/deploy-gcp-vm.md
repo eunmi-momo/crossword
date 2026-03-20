@@ -75,7 +75,7 @@ PORT=3000 npm run start
 접속 테스트(VM 안에서):
 
 ```bash
-curl -sI http://127.0.0.1:3000
+curl -sI http://127.0.0.1:3000/crossword
 ```
 
 ## 5. PM2로 상시 구동
@@ -108,6 +108,9 @@ sudo apt install -y nginx
 sudo nano /etc/nginx/sites-available/yaongc.newscloud.sbs.co.kr
 ```
 
+Next 앱은 **`basePath: /crossword`** 이므로, Node는 `http://127.0.0.1:3000/crossword/...` 로 응답합니다.  
+같은 VM에 **포트 3001** 등 다른 앱(예: `/election_graph`)을 둘 때는 `location` 블록을 경로별로 나누면 됩니다.
+
 내용 예시:
 
 ```nginx
@@ -115,8 +118,9 @@ server {
     listen 80;
     server_name yaongc.newscloud.sbs.co.kr;
 
-    location / {
-        proxy_pass http://127.0.0.1:3000;
+    # 크로스워드 (PM2 → next start -p 3000, basePath /crossword)
+    location /crossword/ {
+        proxy_pass http://127.0.0.1:3000/crossword/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -126,8 +130,28 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
     }
+    location = /crossword {
+        return 301 /crossword/;
+    }
+
+    # 예: 다른 앱 (basePath /election_graph, 포트 3001)
+    # location /election_graph/ {
+    #     proxy_pass http://127.0.0.1:3001/election_graph/;
+    #     proxy_http_version 1.1;
+    #     proxy_set_header Host $host;
+    #     proxy_set_header X-Real-IP $remote_addr;
+    #     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    #     proxy_set_header X-Forwarded-Proto $scheme;
+    # }
+
+    location / {
+        return 404;
+        # 또는 랜딩 페이지 정적 파일 등
+    }
 }
 ```
+
+IP로만 접속할 때도 동일하게 **`http://<IP>:3000/crossword`** 로 접근합니다.
 
 활성화:
 
@@ -147,18 +171,20 @@ sudo certbot --nginx -d yaongc.newscloud.sbs.co.kr
 
 ## 8. 크론 (Vercel 미사용)
 
+Next **`basePath: /crossword`** 이므로 크론·스케줄러는 **`/api/cron`이 아니라 `/crossword/api/cron`** 을 호출해야 합니다. (루트 `/api/cron`은 이 앱에서 응답하지 않습니다.)
+
 프로덕션이 GCP VM만 쓰는 경우 **Vercel Cron은 동작하지 않습니다.** 다음 중 하나로 매일 퍼즐을 준비하세요.
 
-- **GCP Cloud Scheduler** → VM 외부 URL `https://yaongc.newscloud.sbs.co.kr/api/cron` GET (또는 배포 시 만든 시크릿 헤더)
-- 또는 VM **crontab**에서 `curl`로 같은 URL 호출
+- **GCP Cloud Scheduler** → VM 외부 URL `https://yaongc.newscloud.sbs.co.kr/crossword/api/cron` GET (또는 배포 시 만든 시크릿 헤더)
+- 또는 VM **crontab**에서 `curl`로 같은 URL 호출 (`http://127.0.0.1:3000/crossword/api/cron` 로 VM 내부 호출 가능)
 
-`/api/cron`이 **인증 없이** 열려 있으면 URL만 알면 누구나 호출할 수 있으므로, **시크릿 쿼리/헤더**를 API에 추가하는 것을 권장합니다.
+`/crossword/api/cron`이 **인증 없이** 열려 있으면 URL만 알면 누구나 호출할 수 있으므로, **시크릿 쿼리/헤더**를 API에 추가하는 것을 권장합니다.
 
 ## 9. 자주 나는 이슈
 
 | 증상 | 점검 |
 |------|------|
-| 502 Bad Gateway | `pm2 status`, `curl localhost:3000`, Nginx `error.log` |
+| 502 Bad Gateway | `pm2 status`, `curl -sI http://127.0.0.1:3000/crossword`, Nginx `error.log` |
 | 빈 화면 / 500 | `pm2 logs crossword`, `NEXT_PUBLIC_*` 재빌드 여부 |
 | 퍼즐 생성 타임아웃 | `app/api/puzzle/route.ts`의 `maxDuration`은 **Vercel 전용** — VM에서는 Node 프로세스 제한만 적용 |
 

@@ -8,6 +8,7 @@ import {
   getPrefetchedPuzzle,
   prefetchTodayPuzzle,
 } from "@/lib/puzzlePrefetch";
+import { withBasePath } from "@/lib/basePath";
 
 type CellKey = `${number},${number}`;
 
@@ -304,7 +305,7 @@ export default function CrosswordGamePage() {
         time: timeSec,
         date: todayKSTYmd(),
       };
-      const res = await fetch("/api/ranking", {
+      const res = await fetch(withBasePath("/api/ranking"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -459,7 +460,7 @@ export default function CrosswordGamePage() {
           <div className="text-left">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/logo/sbsnews.svg?v=2"
+              src={withBasePath("/logo/sbsnews.svg?v=2")}
               alt="SBS NEWS"
               width={98}
               height={16}

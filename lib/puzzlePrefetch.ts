@@ -1,4 +1,5 @@
 import type { GeneratedCrossword } from "@/lib/generatePuzzle";
+import { withBasePath } from "@/lib/basePath";
 
 function todayKSTYmd(): string {
   const fmt = new Intl.DateTimeFormat("en-CA", {
@@ -37,7 +38,9 @@ export function prefetchTodayPuzzle(day?: string): Promise<GeneratedCrossword> {
 
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   inflight = fetch(
-    `/api/puzzle?day=${encodeURIComponent(d)}&_=${encodeURIComponent(stamp)}`,
+    withBasePath(
+      `/api/puzzle?day=${encodeURIComponent(d)}&_=${encodeURIComponent(stamp)}`
+    ),
     {
       cache: "no-store",
       headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },

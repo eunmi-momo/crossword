@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { withBasePath } from "@/lib/basePath";
 import { prefetchTodayPuzzle } from "@/lib/puzzlePrefetch";
 
 type RankingRow = {
@@ -79,7 +80,7 @@ export default function HomePage() {
         <header className="mb-6 sm:mb-10">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo/sbsnews.svg?v=2"
+            src={withBasePath("/logo/sbsnews.svg?v=2")}
             alt="SBS NEWS"
             width={98}
             height={16}
@@ -101,7 +102,7 @@ export default function HomePage() {
 
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/img/main-visual.png"
+            src={withBasePath("/img/main-visual.png")}
             alt="크로스워드 일러스트"
             className="mx-auto mt-6 w-full max-w-[min(100%,24rem)] sm:max-w-[28rem]"
           />

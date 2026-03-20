@@ -3,6 +3,7 @@ import path from "node:path";
 import { config as dotenvConfig } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 
+import { withBasePath } from "@/lib/basePath";
 import { fetchNews } from "@/lib/fetchNews";
 import { generatePuzzle } from "@/lib/generatePuzzle";
 
@@ -80,7 +81,7 @@ export async function GET() {
     return NextResponse.json({ status: "created", date });
   } catch (err) {
     const message = getErrorMessage(err);
-    console.error("[/api/cron] error:", err);
+    console.error(`[${withBasePath("/api/cron")}] error:`, err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

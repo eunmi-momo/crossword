@@ -28,7 +28,8 @@ pm2 restart crossword
 ## 자정 퍼즐 크론
 
 Vercel Cron은 사용하지 않습니다. (레거시 `vercel.json`은 제거됨.)  
-**GCP Cloud Scheduler** 또는 VM **crontab**으로 프로덕션 URL의 `GET /api/cron` 을 호출하세요.  
+**GCP Cloud Scheduler** 또는 VM **crontab**으로 프로덕션 URL의 `GET /crossword/api/cron` 을 호출하세요. (`/api/cron` 아님 · `basePath` 반영)  
+(도메인 루트에 Nginx만 두고 앱은 `/crossword`인 경우)  
 상세는 `deploy-gcp-vm.md` 8절.
 
 ## AI·협업 시 참고
