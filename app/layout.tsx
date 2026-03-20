@@ -11,7 +11,7 @@ const nanumGothic = Nanum_Gothic({
 });
 
 export const metadata: Metadata = {
-  title: "오늘의 뉴스 크로스워드",
+  title: "뉴스 크로스워드",
   description: "오늘의 뉴스로 만드는 크로스워드 퍼즐",
 };
 

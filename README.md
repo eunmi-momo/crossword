@@ -1,51 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 뉴스 크로스워드
+
+Next.js 기반 뉴스 RSS → 크로스워드 생성 · Supabase 저장 · 랭킹.
+
+## 배포 (GCP VM) — **자동 배포 없음**
+
+**GitHub에 푸시만 해서는 실서비스가 바뀌지 않습니다.**  
+프로덕션 반영은 VM에서 수동으로 빌드·재시작해야 합니다.
+
+```bash
+cd crossword          # 실제 클론 경로에 맞게
+git pull
+npm run build
+pm2 restart crossword
+```
+
+자세한 절차·크론·환경 변수: **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)** · 초기 VM 세팅: **[docs/deploy-gcp-vm.md](./docs/deploy-gcp-vm.md)**
+
+---
+
+## 로컬 개발
+
+```bash
+npm install
+npm run dev
+```
+
+브라우저: [http://localhost:3100](http://localhost:3100) (이 프로젝트는 포트 **3100**)
 
 ## 퍼즐이 안 바뀔 때
 
-- **오늘 날짜로 저장된 한 문제**가 `/api/puzzle`(force 없음)에서 나옵니다. 새로고침만으로는 GPT가 다시 돌지 않습니다.
-- **Supabase `puzzles` upsert가 실패**(RLS 등)하면, 예전에는 DB에 남은 옛 퍼즐만 보였습니다. 지금은 **방금 생성한 퍼즐**을 우선 반환합니다.
-- 수동으로 오늘 퍼즐을 다시 만들려면 브라우저/도구에서 `GET /api/puzzle?force=1` 호출(시간·API 비용 큼).
+- `/api/puzzle`은 **오늘 날짜** 기준 DB(또는 생성) 한 세트를 돌려줍니다.
+- Supabase `puzzles` 저장이 안 되면 `supabase/puzzles-rls.sql` 참고.
+- 수동 재생성: `GET /api/puzzle?force=1` (비용·시간 큼).
 
-### Table Editor 내용이 화면과 다를 때
+## 기술 스택
 
-화면은 새 퍼즐인데 **Supabase `puzzles` 행이 예전이면** → **저장(INSERT/UPDATE)이 막힌 상태**입니다.
+Next.js 16, React 19, Tailwind, Supabase, OpenAI.
 
-1. Supabase 대시보드 → **SQL Editor**
-2. 저장소의 `supabase/puzzles-rls.sql` 내용을 붙여 넣고 **Run**
-3. 터미널에서 `/api/puzzle?force=1` 로 한 번 더 생성
-4. **Table Editor → `puzzles`** 에서 해당 `date` 행의 `data` 가 바뀌었는지 확인
+## 라이선스
 
-## Getting Started
-
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3100](http://localhost:3100) with your browser (this project uses port **3100**).
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Private 프로젝트.

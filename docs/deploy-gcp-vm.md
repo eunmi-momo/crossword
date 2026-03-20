@@ -2,6 +2,8 @@
 
 Next.js 16 앱을 **Compute Engine VM**에 두고, **Nginx**로 리버스 프록시 + **Let’s Encrypt**로 HTTPS를 쓰는 흐름입니다.
 
+> **배포 방식:** Vercel 자동 배포는 사용하지 않습니다. GitHub에 푸시한 뒤 **VM에서** `git pull` → `npm run build` → `pm2 restart crossword` 를 실행해야 반영됩니다. 요약은 **[DEPLOYMENT.md](./DEPLOYMENT.md)**.
+
 ## 0. 사전 준비
 
 - DNS: `yaongc.newscloud.sbs.co.kr` **A 레코드**가 해당 VM의 **외부 IP**를 가리키게 설정
@@ -86,11 +88,18 @@ pm2 save
 pm2 startup   # 출력되는 sudo 명령 그대로 실행
 ```
 
-업데이트 절차:
+**이후 코드 반영(매번):** 저장소 경로에 맞춰 실행합니다.
 
 ```bash
-cd /var/www/crossword && git pull && npm ci && npm run build && pm2 restart crossword
+cd crossword
+# 또는: cd /var/www/crossword
+git pull
+npm run build
+pm2 restart crossword
 ```
+
+`package-lock.json` 변경이 크면 `git pull` 후 `npm ci` 를 한 번 실행한 다음 `npm run build` 하세요.  
+한 줄로: `cd /var/www/crossword && git pull && npm ci && npm run build && pm2 restart crossword` (경로 조정)
 
 ## 6. Nginx 리버스 프록시
 
@@ -136,9 +145,9 @@ sudo certbot --nginx -d yaongc.newscloud.sbs.co.kr
 
 인증서 자동 갱신은 certbot이 crontab/systemd 타이머로 잡습니다.
 
-## 8. 크론(Vercel 대체)
+## 8. 크론 (Vercel 미사용)
 
-지금은 `vercel.json`으로 `/api/cron`을 호출하는 형태일 수 있습니다. VM 단독이면:
+프로덕션이 GCP VM만 쓰는 경우 **Vercel Cron은 동작하지 않습니다.** 다음 중 하나로 매일 퍼즐을 준비하세요.
 
 - **GCP Cloud Scheduler** → VM 외부 URL `https://yaongc.newscloud.sbs.co.kr/api/cron` GET (또는 배포 시 만든 시크릿 헤더)
 - 또는 VM **crontab**에서 `curl`로 같은 URL 호출

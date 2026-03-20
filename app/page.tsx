@@ -93,7 +93,7 @@ export default function HomePage() {
             오늘의 챌린지
           </p>
           <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-[var(--card-foreground)] sm:text-3xl md:text-4xl">
-            SBS 뉴스 크로스워드
+            뉴스 크로스워드
           </h1>
           <p className="mt-4 text-sm text-[var(--card-muted)] sm:text-base">
             단 5분, 게임처럼 즐기다 보면 어느새 시사 상식 마스터!

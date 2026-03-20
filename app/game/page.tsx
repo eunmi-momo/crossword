@@ -471,7 +471,7 @@ export default function CrosswordGamePage() {
               오늘의 챌린지
             </p>
             <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">
-              SBS 뉴스 크로스워드
+              뉴스 크로스워드
             </h1>
             <p className="mt-1 text-sm text-[var(--muted)]">
               단 5분, 게임처럼 즐기다 보면 어느새 상식 마스터!
