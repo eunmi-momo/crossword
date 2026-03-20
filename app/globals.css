@@ -48,3 +48,19 @@ body {
   color: var(--foreground);
   font-family: var(--font-nanum-gothic), "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", sans-serif;
 }
+
+/* SBS NEWS 로고: SVG 원본(320px)이 커서 배포/캐시에서 Tailwind만으로 높이가 안 먹는 경우 대비 */
+header img.sbs-news-logo {
+  display: block;
+  height: 1rem;
+  width: auto;
+  max-width: 6.75rem;
+  object-fit: contain;
+  object-position: left center;
+}
+@media (min-width: 640px) {
+  header img.sbs-news-logo {
+    height: 1.25rem;
+    max-width: 8rem;
+  }
+}

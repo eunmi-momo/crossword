@@ -106,14 +106,20 @@ export default function CrosswordGamePage() {
   const lastClickedCellRef = useRef<string | null>(null);
   const skipNextFocusRef = useRef(false);
   const rankingSaveStartedRef = useRef(false);
+  const [mobileAllCluesOpen, setMobileAllCluesOpen] = useState(false);
 
   useEffect(() => {
     activeIdRef.current = activeId;
-    if (activeId != null) {
-      const el = clueRefs.current[activeId];
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
+    if (activeId == null) return;
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(min-width: 1024px)").matches) return;
+    const el = clueRefs.current[activeId];
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [activeId]);
+
+  useEffect(() => {
+    if (phase !== "playing") setMobileAllCluesOpen(false);
+  }, [phase]);
 
   const isInteractive = phase === "playing";
 
@@ -439,13 +445,26 @@ export default function CrosswordGamePage() {
     focusCell(p.row, p.col);
   }
 
+  /** 모바일 하단 문항 시트 닫기 + 선택 해제 */
+  function closeMobileClueSheet() {
+    activeIdRef.current = null;
+    setActiveId(null);
+    lastClickedCellRef.current = null;
+  }
+
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-        <header className="mb-6">
+      <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
+        <header className="mb-4 sm:mb-6">
           <div className="text-left">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo/sbsnews.svg" alt="SBS NEWS" className="h-4 sm:h-5" />
+            <img
+              src="/logo/sbsnews.svg?v=2"
+              alt="SBS NEWS"
+              width={98}
+              height={16}
+              className="sbs-news-logo"
+            />
           </div>
           <div className="mt-4 text-center">
             <p className="text-sm font-semibold uppercase tracking-widest text-[var(--primary)] sm:text-base">
@@ -473,9 +492,16 @@ export default function CrosswordGamePage() {
         )}
 
         {!loading && !error && grid && numbersGrid && (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-stretch lg:h-[calc(100vh-240px)] overflow-hidden">
+          <div
+            className={[
+              "grid gap-4 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-stretch lg:h-[calc(100vh-240px)] lg:overflow-hidden lg:pb-0",
+              phase === "playing" && activePlacement != null
+                ? "max-lg:pb-[min(44vh,18rem)]"
+                : "max-lg:pb-28",
+            ].join(" ")}
+          >
             {/* Left: Grid */}
-            <div className="lg:h-full lg:overflow-hidden lg:flex lg:flex-col">
+            <div className="lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden">
               <div className="mb-2 flex h-8 min-h-8 items-center gap-3">
                 {phase === "playing" ? (
                   <div className="inline-flex shrink-0 items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-1.5 text-sm font-bold text-white shadow-sm">
@@ -500,7 +526,7 @@ export default function CrosswordGamePage() {
                   {todayKST()}
                 </p>
               </div>
-              <section className="relative rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:p-6 lg:flex-1 lg:min-h-0 lg:flex lg:items-center lg:justify-center lg:overflow-hidden">
+              <section className="relative rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-2 shadow-sm sm:p-6 lg:flex lg:min-h-0 lg:flex-1 lg:items-center lg:justify-center lg:overflow-hidden">
                 {/* 격자: 카드 내부에 맞춤. 정사각형 유지. */}
                 <div className="mx-auto w-full aspect-square max-w-[min(100%,calc(var(--cell-size)*10+3px*11))]">
                   <div
@@ -527,7 +553,7 @@ export default function CrosswordGamePage() {
                           <div
                             key={key}
                             className={[
-                            "relative h-full w-full rounded-md border text-sm",
+                            "relative h-full w-full touch-manipulation rounded-md border text-sm",
                               isBlocked
                                 ? "border-zinc-400 bg-zinc-400"
                                 : "border-zinc-200 bg-white",
@@ -579,7 +605,7 @@ export default function CrosswordGamePage() {
                                 onKeyDown={(e) => handleCellKeyDown(e, r, c)}
                                 inputMode="text"
                                 className={[
-                                  "h-full w-full border-0 p-0 rounded-md bg-transparent text-center text-lg font-semibold outline-none",
+                                  "h-full w-full min-h-0 min-w-0 touch-manipulation rounded-md border-0 bg-transparent p-0 text-center text-base font-semibold outline-none sm:text-lg",
                                   "leading-none",
                                   wrong ? "text-red-600" : "text-[var(--card-foreground)]",
                                   !isInteractive ? "cursor-not-allowed opacity-60" : "",
@@ -597,10 +623,10 @@ export default function CrosswordGamePage() {
               </section>
             </div>
 
-            {/* Right: Clues (2 columns: across / down) */}
-            <div className="lg:h-full lg:overflow-hidden lg:flex lg:flex-col">
+            {/* Right: Clues — 데스크톱만 표시, 모바일은 하단 시트 + 전체 문항 모달 */}
+            <div className="hidden lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden">
               <div className="mb-2 h-8 min-h-8 shrink-0" aria-hidden />
-              <aside className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:p-6 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+              <aside className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:p-6 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
               <div className="grid h-full min-h-0 gap-6 sm:grid-cols-2">
                 {([
                   { key: "across", title: "가로 문항", list: acrossList },
@@ -661,12 +687,201 @@ export default function CrosswordGamePage() {
               </div>
             </aside>
             </div>
+
+            {/* 모바일: 선택한 문항 하단 시트 */}
+            {phase === "playing" &&
+              isInteractive &&
+              activePlacement != null && (
+                <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 lg:hidden">
+                  <div
+                    className="pointer-events-auto mx-auto max-w-6xl px-2"
+                    style={{
+                      paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))",
+                    }}
+                  >
+                    <div className="flex max-h-[min(46vh,20rem)] flex-col overflow-hidden rounded-t-2xl border border-b-0 border-[var(--card-border)] bg-[var(--card)] shadow-[0_-12px_40px_rgba(0,0,0,0.18)]">
+                      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--card-border)] px-3 py-2.5 sm:px-4">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <span
+                            className="hidden h-1 w-9 shrink-0 rounded-full bg-[var(--card-muted)]/35 sm:block"
+                            aria-hidden
+                          />
+                          <span className="truncate text-xs font-extrabold text-[var(--primary)] sm:text-sm">
+                            {activePlacement.direction === "across"
+                              ? "가로"
+                              : "세로"}{" "}
+                            {activePlacement.number}번
+                          </span>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <button
+                            type="button"
+                            className="rounded-full border border-[var(--card-border)] bg-[var(--card)] px-3 py-1.5 text-xs font-bold text-[var(--card-foreground)] active:bg-[#5055fa]/15"
+                            onClick={() => setMobileAllCluesOpen(true)}
+                          >
+                            전체 문항
+                          </button>
+                          <button
+                            type="button"
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[var(--card-border)] bg-[var(--card)] text-[var(--card-foreground)] active:bg-[#5055fa]/15"
+                            aria-label="문항 팝업 닫기"
+                            onClick={closeMobileClueSheet}
+                          >
+                            <svg
+                              aria-hidden
+                              viewBox="0 0 24 24"
+                              className="h-5 w-5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                            >
+                              <path d="M18 6L6 18M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4">
+                        <p className="text-sm font-bold leading-snug text-[var(--card-foreground)] sm:text-base">
+                          {activePlacement.definition}
+                        </p>
+                        <p className="mt-2 text-sm leading-relaxed text-[var(--card-muted)]">
+                          {activePlacement.hint}
+                        </p>
+                        <a
+                          href={activePlacement.link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex items-center rounded-full border border-[var(--card-border)] px-3 py-2 text-xs font-semibold text-[var(--card-foreground)] active:bg-[#5055fa]/10"
+                        >
+                          힌트 보기
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            {/* 모바일: 문항 미선택 시 전체 목록 열기 */}
+            {phase === "playing" &&
+              isInteractive &&
+              activePlacement == null && (
+                <div className="fixed inset-x-0 bottom-0 z-30 flex justify-center px-4 lg:hidden pointer-events-none">
+                  <button
+                    type="button"
+                    className="pointer-events-auto mb-[max(0.75rem,env(safe-area-inset-bottom))] rounded-full border border-[var(--card-border)] bg-[var(--card)] px-5 py-2.5 text-sm font-bold text-[var(--card-foreground)] shadow-lg active:scale-[0.98]"
+                    onClick={() => setMobileAllCluesOpen(true)}
+                  >
+                    문항 목록
+                  </button>
+                </div>
+              )}
+
+            {/* 모바일: 전체 가로·세로 문항 모달 */}
+            {mobileAllCluesOpen && phase === "playing" && (
+              <div
+                className="fixed inset-0 z-[60] flex flex-col bg-black/45 lg:hidden"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="mobile-clues-title"
+              >
+                <button
+                  type="button"
+                  className="min-h-0 flex-1 cursor-default"
+                  aria-label="닫기"
+                  onClick={() => setMobileAllCluesOpen(false)}
+                />
+                <div className="max-h-[88vh] flex shrink-0 flex-col overflow-hidden rounded-t-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-xl">
+                  <div className="flex items-center justify-between border-b border-[var(--card-border)] px-4 py-3">
+                    <h2
+                      id="mobile-clues-title"
+                      className="text-base font-extrabold text-[var(--card-foreground)]"
+                    >
+                      전체 문항
+                    </h2>
+                    <button
+                      type="button"
+                      className="rounded-full px-3 py-1.5 text-sm font-bold text-[var(--primary)]"
+                      onClick={() => setMobileAllCluesOpen(false)}
+                    >
+                      닫기
+                    </button>
+                  </div>
+                  <div
+                    className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4"
+                    style={{
+                      paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))",
+                    }}
+                  >
+                    <div className="grid gap-8 sm:grid-cols-2 sm:gap-6">
+                      {(
+                        [
+                          { key: "across", title: "가로 문항", list: acrossList },
+                          { key: "down", title: "세로 문항", list: downList },
+                        ] as const
+                      ).map((col) => (
+                        <div key={col.key} className="flex flex-col">
+                          <h3 className="mb-3 text-sm font-extrabold text-[var(--card-foreground)]">
+                            {col.title}
+                          </h3>
+                          <ul className="space-y-3">
+                            {col.list.map((p) => {
+                              const active = p.id === activeId;
+                              return (
+                                <li
+                                  key={p.id}
+                                  className={[
+                                    "rounded-2xl border px-3 py-3 transition sm:px-4 sm:py-4",
+                                    active
+                                      ? "border-[var(--primary)] bg-[var(--primary)]/10"
+                                      : "border-[var(--card-border)] bg-[var(--card)]",
+                                  ].join(" ")}
+                                >
+                                  <button
+                                    className="w-full text-left"
+                                    type="button"
+                                    onClick={() => {
+                                      choosePlacement(p);
+                                      setMobileAllCluesOpen(false);
+                                    }}
+                                  >
+                                    <div className="text-[11px] font-extrabold text-[var(--card-muted)]">
+                                      {p.number}
+                                    </div>
+                                    <div className="mt-1 text-sm font-bold text-[var(--card-foreground)]">
+                                      {p.definition}
+                                    </div>
+                                    <div className="mt-2 text-sm text-[var(--card-muted)]">
+                                      {p.hint}
+                                    </div>
+                                  </button>
+                                  <div className="mt-2">
+                                    <a
+                                      href={p.link}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center rounded-full border border-[var(--card-border)] px-3 py-2 text-xs font-semibold text-[var(--card-foreground)]"
+                                    >
+                                      힌트 보기
+                                    </a>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* Complete overlay */}
         {phase === "complete" && (
-          <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-6">
+          <div className="fixed inset-0 z-[70] grid place-items-center bg-black/30 p-4 sm:p-6">
             <div className="w-full max-w-sm rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-8 shadow-xl text-center">
               <h2 className="text-3xl font-extrabold text-[var(--card-foreground)]">
                 축하합니다!

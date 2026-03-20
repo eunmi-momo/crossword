@@ -74,19 +74,25 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
         {/* 좌측 상단 SBS NEWS */}
-        <header className="mb-10">
+        <header className="mb-6 sm:mb-10">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo/sbsnews.svg" alt="SBS NEWS" className="h-4 sm:h-5" />
+          <img
+            src="/logo/sbsnews.svg?v=2"
+            alt="SBS NEWS"
+            width={98}
+            height={16}
+            className="sbs-news-logo"
+          />
         </header>
 
         {/* 크로스워드 소개 박스 */}
-        <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] px-6 py-14 text-center shadow-sm sm:px-10">
+        <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-10 text-center shadow-sm sm:px-10 sm:py-14">
           <p className="text-sm font-semibold uppercase tracking-widest text-[var(--primary)] sm:text-base">
             오늘의 챌린지
           </p>
-          <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-[var(--card-foreground)] sm:text-4xl">
+          <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-[var(--card-foreground)] sm:text-3xl md:text-4xl">
             SBS 뉴스 크로스워드
           </h1>
           <p className="mt-4 text-sm text-[var(--card-muted)] sm:text-base">
@@ -97,7 +103,7 @@ export default function HomePage() {
           <img
             src="/img/main-visual.png"
             alt="크로스워드 일러스트"
-            className="mx-auto mt-6 w-96 sm:w-[28rem]"
+            className="mx-auto mt-6 w-full max-w-[min(100%,24rem)] sm:max-w-[28rem]"
           />
 
           <div className="mx-auto mt-8 flex w-full max-w-xs flex-col items-center gap-3">
