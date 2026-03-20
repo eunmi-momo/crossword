@@ -4,13 +4,12 @@ import { generatePuzzle } from "@/lib/generatePuzzle";
 import path from "node:path";
 import { config as dotenvConfig } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
-import type { GeneratedCrossword, PlacedPuzzleItem } from "@/lib/generatePuzzle";
+import type { PlacedPuzzleItem } from "@/lib/generatePuzzle";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
-
-type VolatileCache = { date: string; data: unknown; expiresAt: number } | null;
-let volatileCache: VolatileCache = null;
+/** 라우트/응답이 정적으로 캐시되지 않도록 */
+export const dynamic = "force-dynamic";
 
 function getPuzzleStats(data: unknown): { filled: number; inter: number; n: number; m: number } | null {
   const d = data as { grid?: unknown; words?: unknown };
@@ -53,6 +52,18 @@ function getPuzzleStats(data: unknown): { filled: number; inter: number; n: numb
 
   return { filled, inter, n, m };
 }
+
+function isStoredPuzzleUsable(data: unknown): boolean {
+  const stats = getPuzzleStats(data);
+  if (!stats || stats.n !== 10 || stats.m !== 10) return false;
+  return stats.filled >= 20 && stats.inter >= 4;
+}
+
+/** CDN(s-maxage)은 유지, 브라우저는 매번 재검증해 DB 갱신 후 최신 퍼즐이 보이게 */
+const CACHE_HEADERS: Record<string, string> = {
+  "Cache-Control":
+    "public, s-maxage=1800, stale-while-revalidate=86400, max-age=0, must-revalidate",
+};
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -109,81 +120,61 @@ export async function GET(request: Request) {
     const force = url.searchParams.get("force") === "1";
 
     if (!force) {
-      // Upsert 실패(=저장 불가) 케이스에서 반복 GPT 호출을 줄이기 위한 메모리 캐시
-      if (volatileCache && volatileCache.date === date && Date.now() < volatileCache.expiresAt && (() => {
-        const stats = getPuzzleStats(volatileCache.data);
-        return stats && stats.n === 10 && stats.m === 10 && stats.inter >= 4;
-      })()) {
-        return NextResponse.json(volatileCache.data, {
-          headers: {
-            "X-Puzzle-Source": "sbs-crossword-regenerated-volatile-cache",
-            "Cache-Control": "public, max-age=3600",
-          },
-        });
-      }
-
-      // 1) 오늘 퍼즐이 이미 저장돼 있으면 그대로 반환
       const { data: existing, error: selectErr } = await supabase
         .from("puzzles")
         .select("data")
         .eq("date", date)
         .maybeSingle();
       if (selectErr) throw new Error(getErrorMessage(selectErr));
-      if (existing?.data) {
-        const d = existing.data as unknown as { grid?: string[][] };
-        const grid = d?.grid;
-        const isCorrectSize =
-          Array.isArray(grid) &&
-        grid.length === 10 &&
-        Array.isArray(grid[0]) &&
-        grid[0]!.length === 10;
-
-        if (isCorrectSize) {
-          const stats = getPuzzleStats(existing.data);
-          const reuse = stats
-            ? stats.filled >= 20 && stats.inter >= 4
-            : true;
-
-          if (reuse) {
-            return NextResponse.json(existing.data, {
-              headers: {
-                "X-Puzzle-Source": "sbs-crossword-cache",
-                "Cache-Control": "public, max-age=3600",
-              },
-            });
-          }
-        }
+      if (existing?.data && isStoredPuzzleUsable(existing.data)) {
+        return NextResponse.json(existing.data, {
+          headers: {
+            "X-Puzzle-Source": "sbs-crossword-cache",
+            ...CACHE_HEADERS,
+          },
+        });
       }
     }
 
-    // 2) 없으면 생성 → 저장 → 반환
     const news = await fetchNews();
     const crossword = await generatePuzzle(news);
 
     const { error: upsertErr } = await supabase
       .from("puzzles")
       .upsert({ date, data: crossword }, { onConflict: "date" });
+
     if (upsertErr) {
-      // RLS 정책 때문에 저장이 실패할 수 있습니다.
-      // 이 경우에도 프론트가 멈추지 않도록 생성된 퍼즐을 그대로 반환합니다.
-      console.error("[/api/puzzle] upsert failed, returning generated puzzle only:", upsertErr);
-      volatileCache = {
-        date,
-        data: crossword,
-        expiresAt: Date.now() + 1000 * 60 * 60, // 1 hour
-      };
+      console.error("[/api/puzzle] upsert failed:", upsertErr);
+      // ★ 저장 실패 시 DB에 남은 '예전 퍼즐'을 돌려주면 force=1 해도 화면이 절대 안 바뀜
       return NextResponse.json(crossword, {
         headers: {
-          "X-Puzzle-Source": "sbs-crossword-regenerated-volatile",
-          "Cache-Control": "public, max-age=3600",
+          "X-Puzzle-Source": "sbs-crossword-generated-upsert-failed",
+          "Cache-Control": "private, no-store",
+          "X-Puzzle-Upsert-Failed": "1",
+        },
+      });
+    }
+
+    const { data: stored, error: readErr } = await supabase
+      .from("puzzles")
+      .select("data")
+      .eq("date", date)
+      .maybeSingle();
+    if (readErr) throw new Error(getErrorMessage(readErr));
+
+    if (stored?.data && isStoredPuzzleUsable(stored.data)) {
+      return NextResponse.json(stored.data, {
+        headers: {
+          "X-Puzzle-Source": "sbs-crossword",
+          ...CACHE_HEADERS,
         },
       });
     }
 
     return NextResponse.json(crossword, {
       headers: {
-        "X-Puzzle-Source": "sbs-crossword",
-        "Cache-Control": "public, max-age=3600",
+        "X-Puzzle-Source": "sbs-crossword-unsaved-fallback",
+        "Cache-Control": "private, no-store",
       },
     });
   } catch (err) {

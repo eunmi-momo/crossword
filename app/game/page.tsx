@@ -77,7 +77,9 @@ export default function CrosswordGamePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<GeneratedCrossword | null>(null);
-  const prefetchRef = useRef<Promise<GeneratedCrossword> | null>(null);
+  /** 동시에 두 번 호출될 때만 공유. 완료 후 null → 다음 로드는 항상 새 네트워크 요청 */
+  const inflightRef = useRef<Promise<GeneratedCrossword> | null>(null);
+  const bustFirstPuzzleLoadRef = useRef(false);
 
   const [phase, setPhase] = useState<"start" | "playing" | "complete">("start");
   const [timeSec, setTimeSec] = useState(0);
@@ -94,6 +96,7 @@ export default function CrosswordGamePage() {
   const lastEditedCellRef = useRef<{ r: number; c: number } | null>(null);
   const lastClickedCellRef = useRef<string | null>(null);
   const skipNextFocusRef = useRef(false);
+  const rankingSaveStartedRef = useRef(false);
 
   useEffect(() => {
     activeIdRef.current = activeId;
@@ -111,49 +114,58 @@ export default function CrosswordGamePage() {
     const name = sp.get("name") ?? undefined;
     const promptName = sp.get("promptName") ?? undefined;
     setQuery({ name, promptName });
+    if (sp.get("newpuzzle") === "1") bustFirstPuzzleLoadRef.current = true;
   }, []);
 
-  async function loadPuzzle(options?: { background?: boolean }) {
+  async function loadPuzzle(options?: { background?: boolean; bust?: boolean }) {
     const background = options?.background ?? false;
+    const bust = options?.bust ?? false;
     try {
       if (!background) setLoading(true);
       setError(null);
 
-      if (!prefetchRef.current) {
-        prefetchRef.current = (async () => {
-          const res = await fetch("/api/puzzle", { cache: "force-cache" });
+      if (bust) inflightRef.current = null;
+
+      if (!inflightRef.current) {
+        const day = todayKSTYmd();
+        const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+        inflightRef.current = (async () => {
+          const res = await fetch(
+            `/api/puzzle?day=${encodeURIComponent(day)}&_=${encodeURIComponent(stamp)}`,
+            {
+              cache: "no-store",
+              headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+            }
+          );
           const json = (await res.json()) as GeneratedCrossword | { error: string };
           if (!res.ok)
             throw new Error(
               (json as { error: string })?.error ?? "불러오기 실패"
             );
           return json as GeneratedCrossword;
-        })();
+        })().finally(() => {
+          inflightRef.current = null;
+        });
       }
 
-      const puzzle = await prefetchRef.current;
+      const puzzle = await inflightRef.current;
       setData(puzzle);
     } catch (e) {
       setError(e instanceof Error ? e.message : "오류가 발생했습니다.");
-      prefetchRef.current = null;
+      inflightRef.current = null;
     } finally {
       if (!background) setLoading(false);
     }
   }
 
-  // 페이지 로드시 백그라운드로 미리 퍼즐 받아두기
-  useEffect(() => {
-    if (nameFromQuery) return;
-    void loadPuzzle({ background: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nameFromQuery]);
-
-  // 페이지 진입 시 바로 게임 시작
+  // 페이지 진입 시 한 번만 로드 (백그라운드 이중 요청 제거 → 오래된 Promise 재사용 방지)
   useEffect(() => {
     if (phase !== "start") return;
     setSaved(false);
     setPhase("playing");
-    void loadPuzzle({ background: false });
+    const bust = bustFirstPuzzleLoadRef.current;
+    bustFirstPuzzleLoadRef.current = false;
+    void loadPuzzle({ background: false, bust });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -273,16 +285,19 @@ export default function CrosswordGamePage() {
   useEffect(() => {
     if (phase !== "playing") return;
     if (!allCorrect) return;
-    if (saved) return;
+    if (rankingSaveStartedRef.current) return;
+    rankingSaveStartedRef.current = true;
     setTimerFrozen(true);
+    setPhase("complete");
     void autoSaveRanking();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allCorrect, phase, saved]);
+  }, [allCorrect, phase]);
 
   async function autoSaveRanking() {
     const playerName = (nameFromQuery ?? "").trim();
     if (!playerName) {
-      setPhase("complete");
+      setMyRank(null);
+      setSaved(true);
       return;
     }
     try {
@@ -302,8 +317,8 @@ export default function CrosswordGamePage() {
       setMyRank(json.rank ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "기록 저장에 실패했습니다.");
+      setSaved(true);
     }
-    setPhase("complete");
   }
 
   function focusCell(r: number, c: number) {
@@ -671,18 +686,27 @@ export default function CrosswordGamePage() {
                 당신의 실력에 박수를 보냅니다!
               </p>
 
-              {myRank != null && (
-                <div className="mt-4 rounded-xl bg-[var(--primary)]/10 px-6 py-4">
-                  <p className="text-sm text-[var(--card-muted)]">당신의 순위</p>
-                  <p className="mt-1 text-3xl font-extrabold text-[var(--primary)]">
-                    {myRank}위
+              {(nameFromQuery ?? "").trim() ? (
+                !saved ? (
+                  <p className="mt-4 text-sm text-[var(--card-muted)]">
+                    순위를 불러오는 중…
                   </p>
-                  <p className="mt-1 text-sm text-[var(--card-muted)]">
+                ) : myRank != null ? (
+                  <div className="mt-4 rounded-xl bg-[var(--primary)]/10 px-6 py-4">
+                    <p className="text-sm text-[var(--card-muted)]">당신의 순위</p>
+                    <p className="mt-1 text-3xl font-extrabold text-[var(--primary)]">
+                      {myRank}위
+                    </p>
+                    <p className="mt-1 text-sm text-[var(--card-muted)]">
+                      소요시간: {formatTimer(timeSec)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-[var(--card-muted)]">
                     소요시간: {formatTimer(timeSec)}
                   </p>
-                </div>
-              )}
-              {myRank == null && (
+                )
+              ) : (
                 <p className="mt-4 text-sm text-[var(--card-muted)]">
                   소요시간: {formatTimer(timeSec)}
                 </p>
@@ -703,14 +727,14 @@ export default function CrosswordGamePage() {
                     setInputs({});
                     activeIdRef.current = null;
                     setActiveId(null);
-                    setData(null);
+                    lastClickedCellRef.current = null;
                     setError(null);
                     setTimeSec(0);
                     setTimerFrozen(false);
                     setSaved(false);
                     setMyRank(null);
-                    prefetchRef.current = null;
-                    setPhase("start");
+                    rankingSaveStartedRef.current = false;
+                    setPhase("playing");
                   }}
                 >
                   다시 풀기

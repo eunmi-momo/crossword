@@ -92,6 +92,104 @@ const KO_PARTICLES = [
   "로", "와", "과", "라", "만", "씩", "별",
 ];
 
+/**
+ * 단어 끝에 붙는 조사·접미(명사+조사 형태). 긴 것부터 매칭.
+ * '나라'(나+라 오인) 방지: stem은 최소 2글자만 조사 분리로 인정.
+ */
+const TRAILING_JOSA_SUFFIXES: string[] = [
+  ...new Set([
+    "이라는",
+    "이라고",
+    "으로서",
+    "으로써",
+    "에서는",
+    "에서도",
+    "라는",
+    "라고",
+    "에서",
+    "까지",
+    "부터",
+    "처럼",
+    "만큼",
+    "조차",
+    "밖에",
+    "으로",
+    "에는",
+    "에도",
+    "에게",
+    "한테",
+    "이랑",
+    "이며",
+    "이고",
+    "이든",
+    "이나",
+    "이다",
+    "들",
+    "이",
+    "가",
+    "을",
+    "를",
+    "은",
+    "는",
+    "와",
+    "과",
+    "도",
+    "만",
+    "에",
+    "의",
+    "로",
+  ]),
+].sort((a, b) => b.length - a.length);
+
+/** 정답이 '어근+조사'처럼 보이면 true (2글자 미만 어근은 제외해 나라·정도 등 오탐 감소) */
+function looksLikeWordPlusTrailingJosa(word: string): boolean {
+  const w = word.normalize("NFC");
+  if (w.length < 3) return false;
+  for (const suf of TRAILING_JOSA_SUFFIXES) {
+    if (suf.length >= w.length) continue;
+    if (!w.endsWith(suf)) continue;
+    const stem = w.slice(0, w.length - suf.length);
+    if (stem.length < 2 || stem.length > 5) continue;
+    if (!/^[가-힣]+$/.test(stem)) continue;
+    return true;
+  }
+  return false;
+}
+
+/** 끝 조사를 떼어 낸 어근(크로스워드 정답 후보). 없으면 null */
+function stripTrailingJosa(word: string): string | null {
+  const w = word.normalize("NFC");
+  for (const suf of TRAILING_JOSA_SUFFIXES) {
+    if (suf.length >= w.length) continue;
+    if (!w.endsWith(suf)) continue;
+    const stem = w.slice(0, w.length - suf.length);
+    if (stem.length < 2 || stem.length > 5) continue;
+    if (!/^[가-힣]+$/.test(stem)) continue;
+    return stem;
+  }
+  return null;
+}
+
+/** GPT가 조사를 붙여 준 경우 어근만 남김. 반복 적용(학생들은 → 학생). */
+function normalizeAnswerWord(raw: string): string | null {
+  let w = raw
+    .trim()
+    .replace(/\s+/g, "")
+    .normalize("NFC")
+    .slice(0, 14);
+  if (!w) return null;
+  for (let i = 0; i < 6; i++) {
+    const stem = stripTrailingJosa(w);
+    if (!stem) break;
+    w = stem;
+  }
+  w = w.slice(0, 5);
+  if (w.length < 2 || w.length > 5) return null;
+  if (!/^[가-힣]+$/.test(w)) return null;
+  if (looksLikeWordPlusTrailingJosa(w)) return null;
+  return w;
+}
+
 function applyUnderscoreHint(word: string, hint: string): string {
   const w = word.trim();
   let h = hint.trim();
@@ -113,6 +211,42 @@ function applyUnderscoreHint(word: string, hint: string): string {
   }
 
   return h + " (" + underscore(w) + ")";
+}
+
+/** 힌트는 한 줄·짧게: 정답 주변만 잘라 원문 일부만 사용 (너무 긴 문장 방지) */
+const MAX_HINT_SENTENCE_CHARS = 72;
+
+function clipSentenceAroundWord(sentence: string, word: string): string {
+  const s = sentence.replace(/\s+/g, " ").trim();
+  if (s.length <= MAX_HINT_SENTENCE_CHARS) return s;
+
+  let idx = s.indexOf(word);
+  let matchLen = word.length;
+  if (idx < 0) {
+    for (const p of KO_PARTICLES) {
+      const wp = word + p;
+      const i = s.indexOf(wp);
+      if (i >= 0) {
+        idx = i;
+        matchLen = wp.length;
+        break;
+      }
+    }
+  }
+  if (idx < 0) {
+    return s.slice(0, MAX_HINT_SENTENCE_CHARS - 1) + "…";
+  }
+
+  const innerBudget = MAX_HINT_SENTENCE_CHARS - 2; // 양끝 …
+  const pad = innerBudget - matchLen;
+  const leftPad = Math.max(0, Math.floor(pad / 2));
+  const rightPad = pad - leftPad;
+  let start = Math.max(0, idx - leftPad);
+  let end = Math.min(s.length, idx + matchLen + rightPad);
+  let out = s.slice(start, end);
+  if (start > 0) out = "…" + out;
+  if (end < s.length) out = out + "…";
+  return out;
 }
 
 /* ───────── 기사에서 문장 추출 ───────── */
@@ -520,22 +654,25 @@ export async function generatePuzzle(
 너의 역할:
 1. 각 문장에서 크로스워드 정답으로 적합한 2~5글자 한국어 단어를 찾아라.
 2. 반드시 해당 문장 안에 그대로 등장하는 단어만 골라라.
-3. 단어들 사이에 공통 글자가 최대한 많도록 골라라 (크로스워드 교차를 위해).
+3. ★ word는 조사·복수 접미사가 붙지 않은 **독립 단어(명사·동사 원형 등)**만 쓴다.
+   문장에 "사고가", "학생들은", "정책을"처럼 붙어 있어도 word에는 "사고", "학생", "정책"처럼 조사 없는 형태만 넣는다.
+   절대 word에 이/가/을/를/은/는/에/의/도/만/와/과/로/으로/에서/까지/부터/들/이다(서술어 붙은 명사 뒤) 등을 붙이지 마라.
+4. 단어들 사이에 공통 글자가 최대한 많도록 골라라 (크로스워드 교차를 위해).
    예: "경찰"과 "경기" → '경'에서 교차 가능.
-4. definition에는 정답 단어의 사전적 의미를 국어사전 스타일로 한 문장으로 쓴다.
-5. 총 ${GPT_WORD_COUNT}개 문항을 만들어라.
+5. definition에는 정답 단어의 사전적 의미를 국어사전 스타일로 한 문장으로 쓴다.
+6. 총 ${GPT_WORD_COUNT}개 문항을 만들어라.
 
 응답 형식 (JSON만 출력, 다른 말 없이):
 {"items": [{"word": "단어", "sentence_idx": 번호, "definition": "사전적 의미"}, ...]}
 
-- word: 해당 문장에 실제로 들어있는 2~5글자 단어
+- word: 조사 없는 2~5글자 단어만. 문장 속에 그 형태가 부분 문자열로 포함되면 된다(예: 문장의 "사고가"에 대해 word는 "사고").
 - sentence_idx: 해당 단어가 포함된 문장의 번호 (사용자가 제공한 [번호])
 - definition: 단어의 사전적 의미 (쉬운 말, 한 문장)`,
       },
       {
         role: "user",
         content: `아래 문장들에서 크로스워드 문항 ${GPT_WORD_COUNT}개를 만들어라.
-각 문항의 word는 반드시 해당 sentence_idx 문장 안에 그대로 존재하는 2~5글자 단어여야 한다.
+각 문항의 word는 해당 sentence_idx 문장 안에 등장하는 **조사 없는** 2~5글자 단어여야 한다(문장에 "단어+조사"로만 나와도, word는 어근만).
 단어들 사이에 공통 글자가 많은 조합을 우선 선택해라.
 
 ${sentenceList}`,
@@ -562,8 +699,8 @@ ${sentenceList}`,
   const usedWords = new Set<string>();
 
   for (const item of items) {
-    const word = String(item?.word ?? "").trim().replace(/\s+/g, "").slice(0, 5);
-    if (word.length < 2 || word.length > 5) continue;
+    const word = normalizeAnswerWord(String(item?.word ?? ""));
+    if (!word) continue;
     if (usedWords.has(word)) continue;
 
     const sIdx = Number(item?.sentence_idx ?? 0);
@@ -575,7 +712,8 @@ ${sentenceList}`,
       KO_PARTICLES.some((p) => sentenceData.sentence.includes(word + p));
     if (!wordInSentence) continue;
 
-    const hint = applyUnderscoreHint(word, sentenceData.sentence);
+    const shortSentence = clipSentenceAroundWord(sentenceData.sentence, word);
+    const hint = applyUnderscoreHint(word, shortSentence);
     const definition = String(item?.definition ?? "").trim();
     const link = sentenceData.link;
 
