@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { GeneratedCrossword, PlacedPuzzleItem } from "@/lib/generatePuzzle";
 import {
@@ -457,15 +458,44 @@ export default function CrosswordGamePage() {
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
         <header className="mb-4 sm:mb-6">
-          <div className="text-left">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={withBasePath("/logo/sbsnews.svg?v=2")}
-              alt="SBS NEWS"
-              width={98}
-              height={16}
-              className="sbs-news-logo"
-            />
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 shrink-0 text-left">
+              <a
+                href="https://news.sbs.co.kr"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                aria-label="SBS 뉴스 (새 창)"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={withBasePath("/logo/sbsnews.svg?v=2")}
+                  alt=""
+                  width={98}
+                  height={16}
+                  className="sbs-news-logo"
+                />
+              </a>
+            </div>
+            <Link
+              href="/"
+              className="shrink-0 rounded-full border border-white/35 bg-white/10 p-2.5 text-white shadow-sm backdrop-blur-sm transition hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              aria-label="홈으로"
+            >
+              <svg
+                aria-hidden
+                viewBox="0 0 24 24"
+                className="h-5 w-5 sm:h-6 sm:w-6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+            </Link>
           </div>
           <div className="mt-4 text-center">
             <p className="text-sm font-semibold uppercase tracking-widest text-[var(--primary)] sm:text-base">

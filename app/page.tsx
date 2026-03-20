@@ -78,14 +78,22 @@ export default function HomePage() {
       <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
         {/* 좌측 상단 SBS NEWS */}
         <header className="mb-6 sm:mb-10">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={withBasePath("/logo/sbsnews.svg?v=2")}
-            alt="SBS NEWS"
-            width={98}
-            height={16}
-            className="sbs-news-logo"
-          />
+          <a
+            href="https://news.sbs.co.kr"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+            aria-label="SBS 뉴스 (새 창)"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={withBasePath("/logo/sbsnews.svg?v=2")}
+              alt=""
+              width={98}
+              height={16}
+              className="sbs-news-logo"
+            />
+          </a>
         </header>
 
         {/* 크로스워드 소개 박스 */}
@@ -162,7 +170,7 @@ export default function HomePage() {
                     key={r.id}
                     className="flex items-center gap-3 rounded-xl px-4 py-3"
                   >
-                    <span className="w-10 text-2xl font-bold text-[var(--card-foreground)]">
+                    <span className="flex h-10 min-w-[2.75rem] shrink-0 items-center justify-center text-2xl font-bold leading-none tabular-nums text-[var(--card-foreground)]">
                       {idx < 3 ? medal(idx + 1) : `${idx + 1}`}
                     </span>
                     <span className="flex-1 min-w-0 truncate text-base font-semibold text-[var(--card-foreground)]">
