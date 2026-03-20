@@ -161,7 +161,7 @@ export default function HomePageClient() {
           <div className="mt-6">
             {rows.length === 0 ? (
               <div className="py-6 text-center text-sm text-[var(--card-muted)]">
-                아직 기록이 없습니다.
+                오늘의 첫 번째 도전자가 되어주세요!
               </div>
             ) : (
               <ul className="space-y-3">

@@ -97,7 +97,7 @@ export default function RankingPage() {
         <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm">
           {rows.length === 0 ? (
             <div className="py-10 text-center text-sm text-[var(--muted)]">
-              아직 기록이 없습니다.
+              오늘의 첫 번째 도전자가 되어주세요!
             </div>
           ) : (
             <>
