@@ -10,6 +10,7 @@ import {
   prefetchTodayPuzzle,
 } from "@/lib/puzzlePrefetch";
 import { withBasePath } from "@/lib/basePath";
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import { buildShareLandingUrl } from "@/lib/siteUrl";
 
 type CellKey = `${number},${number}`;
@@ -125,6 +126,8 @@ export default function CrosswordGamePage() {
   const nameGateInputRef = useRef<HTMLInputElement | null>(null);
   /** 친구에게 자랑하기: URL 복사 후 버튼 위 툴팁 */
   const [bragTooltip, setBragTooltip] = useState<string | null>(null);
+  /** 클립보드 API 실패 시 직접 복사용으로 표시할 URL */
+  const [bragManualCopyUrl, setBragManualCopyUrl] = useState<string | null>(null);
   /** 축하 팝업 닫기(격자는 유지, phase는 complete) */
   const [completeModalDismissed, setCompleteModalDismissed] = useState(false);
 
@@ -245,9 +248,13 @@ export default function CrosswordGamePage() {
 
   useEffect(() => {
     if (!bragTooltip) return;
-    const t = window.setTimeout(() => setBragTooltip(null), 2200);
+    const ms = bragManualCopyUrl ? 12000 : 2200;
+    const t = window.setTimeout(() => {
+      setBragTooltip(null);
+      setBragManualCopyUrl(null);
+    }, ms);
     return () => window.clearTimeout(t);
-  }, [bragTooltip]);
+  }, [bragTooltip, bragManualCopyUrl]);
 
   const grid = data?.grid ?? null;
   const words = data?.words ?? null;
@@ -421,6 +428,28 @@ export default function CrosswordGamePage() {
     if (el) el.focus();
   }
 
+  /**
+   * 정답 입력 후 다음 칸으로 이동.
+   * 같은 키 입력이 포커스 이동 뒤 새 칸에 중복 적용되는 브라우저 이슈 대응:
+   * 이동 직후 다음 칸 state/DOM을 비우고, keydown에서 정답 완료 칸의 추가 입력은 막음.
+   */
+  function focusCellAfterAutoAdvance(nr: number, nc: number) {
+    const nextKey = `${nr},${nc}` as CellKey;
+    lastEditedCellRef.current = null;
+    setInputs((prev) => ({ ...prev, [nextKey]: "" }));
+    requestAnimationFrame(() => {
+      const el = inputRefs.current[nextKey];
+      if (el) {
+        el.focus({ preventScroll: false });
+      }
+      requestAnimationFrame(() => {
+        const el2 = inputRefs.current[nextKey];
+        if (el2) el2.value = "";
+        setInputs((prev) => ({ ...prev, [nextKey]: "" }));
+      });
+    });
+  }
+
   /** NFC 기준 한 글자. NFD "속"(ㅅ+ㅗ+ㄱ)을 "속" 하나로 취급 */
   function lastNfcChar(value: string): string {
     const nfc = (value ?? "").trim().normalize("NFC");
@@ -506,7 +535,7 @@ export default function CrosswordGamePage() {
         : placement.col;
 
     lastEditedCellRef.current = null;
-    setTimeout(() => focusCell(nr, nc), 0);
+    focusCellAfterAutoAdvance(nr, nc);
   }, [inputs, isInteractive, placements, solution]);
 
   function handleCellKeyDown(
@@ -514,7 +543,22 @@ export default function CrosswordGamePage() {
     r: number,
     c: number
   ) {
+    const nk = e.nativeEvent as KeyboardEvent;
+    if (nk.isComposing || e.keyCode === 229) return;
     const key = `${r},${c}` as CellKey;
+    const v = (inputs[key] ?? "").normalize("NFC");
+    const expected = (solution.get(key) ?? "").normalize("NFC");
+    if (
+      v &&
+      expected &&
+      v === expected &&
+      e.key.length === 1 &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey
+    ) {
+      e.preventDefault();
+    }
     if (e.key === "Backspace" && !(inputs[key] ?? "")) {
       const placement =
         getPreferredPlacementForCell(r, c).pick ??
@@ -566,11 +610,15 @@ export default function CrosswordGamePage() {
       rank: myRank,
       timeMmSs,
     });
-    try {
-      await navigator.clipboard.writeText(linkUrl);
+    setBragManualCopyUrl(null);
+    const result = await copyTextToClipboard(linkUrl);
+    if (result === "failed") {
+      setBragManualCopyUrl(linkUrl);
+      setBragTooltip(
+        "아래 주소를 길게 눌러 직접 복사해 주세요."
+      );
+    } else {
       setBragTooltip("URL이 복사되었습니다");
-    } catch {
-      setBragTooltip("복사에 실패했습니다");
     }
   }
 
@@ -1148,7 +1196,7 @@ export default function CrosswordGamePage() {
                 </p>
               )}
 
-              <div className="mt-6 grid gap-3">
+              <div className="mt-6 flex flex-col gap-3">
                 <button
                   type="button"
                   className="home-cta-btn inline-flex w-full items-center justify-center rounded-full px-8 py-4 text-base font-bold text-slate-900 shadow-lg transition sm:py-[1.1rem] sm:text-lg"
@@ -1156,10 +1204,10 @@ export default function CrosswordGamePage() {
                 >
                   오늘의 랭킹 보기
                 </button>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
                   <button
                     type="button"
-                    className="home-cta-btn inline-flex w-full items-center justify-center rounded-full px-8 py-4 text-base font-bold text-slate-900 shadow-lg transition sm:py-[1.1rem] sm:text-lg"
+                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-neutral-300 bg-neutral-200 px-8 py-4 text-base font-bold text-neutral-800 shadow-sm transition hover:bg-neutral-300 sm:py-[1.1rem] sm:text-lg"
                     onClick={() => {
                       setCompletePreviewDismissed(true);
                       setInputs({});
@@ -1177,10 +1225,15 @@ export default function CrosswordGamePage() {
                   >
                     다시 풀기
                   </button>
-                  <div className="relative flex min-h-[48px] items-center justify-center">
+                  <div className="relative flex min-h-0 flex-1 flex-col justify-center">
                     {bragTooltip ? (
                       <div
-                        className="glass-popup-surface absolute bottom-full left-1/2 z-10 mb-2 w-max max-w-[calc(100vw-1.5rem)] -translate-x-1/2 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold text-black"
+                        className={[
+                          "glass-popup-surface absolute bottom-full left-1/2 z-10 mb-2 max-w-[calc(100vw-1.5rem)] -translate-x-1/2 rounded-xl px-3 py-2 text-xs font-semibold text-black",
+                          bragManualCopyUrl
+                            ? "w-max max-w-[min(100vw-2rem,18rem)] whitespace-normal text-left leading-snug"
+                            : "w-max whitespace-nowrap",
+                        ].join(" ")}
                         role="tooltip"
                       >
                         {bragTooltip}
@@ -1188,7 +1241,7 @@ export default function CrosswordGamePage() {
                     ) : null}
                     <button
                       type="button"
-                      className="home-cta-btn inline-flex w-full items-center justify-center rounded-full px-8 py-4 text-base font-bold text-slate-900 shadow-lg transition disabled:cursor-not-allowed disabled:opacity-50 sm:py-[1.1rem] sm:text-lg"
+                      className="inline-flex w-full items-center justify-center rounded-full border border-[#e6c200] bg-[#FEE500] px-8 py-4 text-base font-bold text-slate-900 shadow-sm transition hover:brightness-[0.97] disabled:cursor-not-allowed disabled:opacity-50 sm:py-[1.1rem] sm:text-lg"
                       disabled={!saved}
                       onClick={() => void handleBragShareCopyUrl()}
                     >
@@ -1196,6 +1249,14 @@ export default function CrosswordGamePage() {
                     </button>
                   </div>
                 </div>
+                {bragManualCopyUrl ? (
+                  <p
+                    className="select-all break-all rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-left font-mono text-[11px] leading-relaxed text-neutral-900 sm:text-xs"
+                    title="길게 눌러 전체 선택 후 복사"
+                  >
+                    {bragManualCopyUrl}
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>
