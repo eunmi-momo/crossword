@@ -6,7 +6,10 @@ import {
   getSiteOrigin,
 } from "@/lib/siteUrl";
 
-const OG_TITLE = "오늘의 뉴스 크로스워드";
+const OG_TITLE = "SBS 뉴스 크로스워드";
+
+const DEFAULT_DESCRIPTION =
+  "게임처럼 즐기다 보면 어느새 상식 마스터! 지금 도전하세요~!";
 
 /** 쿼리(rank, time)마다 다른 OG 메타가 나가야 함 — 정적 프리렌더 시 쿼리가 무시되는 문제 방지 */
 export const dynamic = "force-dynamic";
@@ -36,7 +39,7 @@ export async function generateMetadata({
       ? `나 ${rank}위 달성! 풀이시간 ${time} ⏱️ 너도 도전해봐~`
       : time
         ? `나 퍼즐 완주! 풀이시간 ${time} ⏱️ 너도 도전해봐~`
-        : "오늘의 뉴스로 만드는 크로스워드 퍼즐";
+        : DEFAULT_DESCRIPTION;
 
   return {
     title: OG_TITLE,

@@ -213,12 +213,87 @@ function applyUnderscoreHint(word: string, hint: string): string {
   return h + " (" + underscore(w) + ")";
 }
 
-/** 힌트는 한 줄·짧게: 정답 주변만 잘라 원문 일부만 사용 (너무 긴 문장 방지) */
-const MAX_HINT_SENTENCE_CHARS = 72;
+/** 힌트 본문 최대 길이(약 72자의 1.5배), 최소 표시 길이 */
+const MAX_HINT_BODY_CHARS = 108;
+const MIN_HINT_BODY_CHARS = 50;
+
+/**
+ * 기자명·날짜·조회수·메타 텍스트 제거 (본문·힌트 공통)
+ */
+function stripNewsBylineAndMeta(text: string): string {
+  let t = text;
+  t = t.replace(/_{2,}/g, " ");
+  t = t.replace(/[가-힣·]{2,6}\s+기자/g, " ");
+  t = t.replace(/[A-Za-z][A-Za-z가-힣·\s]{0,22}\s+기자/g, " ");
+  t = t.replace(/\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일/g, " ");
+  t = t.replace(
+    /\d{4}[.\-/年]?\s*\d{1,2}[.\-/]?\s*\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?/g,
+    " "
+  );
+  t = t.replace(/(?:^|\s)\d{1,2}:\d{2}(?::\d{2})?(?=\s|$|[,.])/g, " ");
+  t = t.replace(/조회\s*수?\s*[:：]?\s*[\d,만억천\s]+/g, " ");
+  t = t.replace(/[\d,]+\s*만?\s*조회/g, " ");
+  t = t.replace(/\b(Seoul|Busan|Tokyo|SEOUL|BUSAN|TOKYO|BEIJING)\b/gi, " ");
+  const outlets = [
+    "SBS\\s*NEWS",
+    "SBS뉴스",
+    "연합뉴스",
+    "뉴스1",
+    "YTN",
+    "KBS",
+    "MBC",
+    "JTBC",
+    "TV조선",
+    "채널A",
+    "조선일보",
+    "중앙일보",
+    "한겨레",
+    "경향신문",
+    "매일경제",
+    "한국경제",
+  ];
+  for (const o of outlets) {
+    t = t.replace(new RegExp(`(^|[\\s,])${o}(?=[\\s,.!?]|$)`, "g"), "$1 ");
+  }
+  t = t.replace(/\s+/g, " ").trim();
+  return t;
+}
+
+/** 잘린 구간 끝을 가능하면 완전한 문장(마침표·물음표 등)에서 끝나도록 조정 */
+function adjustEndToSentenceBoundary(
+  full: string,
+  start: number,
+  end: number,
+  maxBody: number
+): number {
+  const cap = Math.min(full.length, start + maxBody);
+  let e = Math.min(end, cap);
+  const forwardLimit = Math.min(full.length, e + 72);
+  for (let i = e; i < forwardLimit; i++) {
+    const ch = full[i]!;
+    if (ch === "." || ch === "!" || ch === "?" || ch === "…") {
+      let j = i + 1;
+      while (j < full.length && /["'」』)\s]/.test(full[j]!)) j++;
+      if (j - start <= maxBody) return j;
+      break;
+    }
+  }
+  for (let i = Math.min(cap, full.length) - 1; i > start + MIN_HINT_BODY_CHARS; i--) {
+    const ch = full[i]!;
+    if (ch === "." || ch === "!" || ch === "?" || ch === "…") {
+      return i + 1;
+    }
+  }
+  return e;
+}
 
 function clipSentenceAroundWord(sentence: string, word: string): string {
-  const s = sentence.replace(/\s+/g, " ").trim();
-  if (s.length <= MAX_HINT_SENTENCE_CHARS) return s;
+  const s0 = sentence.replace(/\s+/g, " ").trim();
+  const s = stripNewsBylineAndMeta(s0);
+  if (s.length === 0) return s0.length > 0 ? s0 : "";
+
+  const maxBody = MAX_HINT_BODY_CHARS;
+  if (s.length <= maxBody) return s;
 
   let idx = s.indexOf(word);
   let matchLen = word.length;
@@ -233,20 +308,229 @@ function clipSentenceAroundWord(sentence: string, word: string): string {
       }
     }
   }
+
   if (idx < 0) {
-    return s.slice(0, MAX_HINT_SENTENCE_CHARS - 1) + "…";
+    const take = adjustEndToSentenceBoundary(s, 0, Math.min(s.length, maxBody), maxBody);
+    let out = s.slice(0, take);
+    if (take < s.length) out += "…";
+    return out;
   }
 
-  const innerBudget = MAX_HINT_SENTENCE_CHARS - 2; // 양끝 …
-  const pad = innerBudget - matchLen;
-  const leftPad = Math.max(0, Math.floor(pad / 2));
-  const rightPad = pad - leftPad;
+  const innerBudget = maxBody - matchLen;
+  const leftPad = Math.max(0, Math.floor(innerBudget / 2));
   let start = Math.max(0, idx - leftPad);
-  let end = Math.min(s.length, idx + matchLen + rightPad);
+  let end = Math.min(s.length, idx + matchLen + (innerBudget - leftPad));
+
+  while (end - start < MIN_HINT_BODY_CHARS && (start > 0 || end < s.length)) {
+    if (start > 0) start--;
+    if (end - start < MIN_HINT_BODY_CHARS && end < s.length) end++;
+  }
+
+  if (end - start > maxBody) {
+    end = start + maxBody;
+  }
+
+  end = adjustEndToSentenceBoundary(s, start, end, maxBody);
+  if (end - start > maxBody) {
+    end = start + maxBody;
+  }
+
   let out = s.slice(start, end);
   if (start > 0) out = "…" + out;
   if (end < s.length) out = out + "…";
   return out;
+}
+
+/** UI 힌트에 남은 JS 잔재·메타 최종 제거 (문장은 이미 전처리됐어도 이중 방어) */
+function sanitizeHintForDisplay(s: string): string {
+  let t = stripNewsBylineAndMeta(s);
+  t = removeInlineJsPatterns(t);
+  t = t.replace(/;/g, " ");
+  t = t.replace(/\s+/g, " ").trim();
+  return t;
+}
+
+/* ───────── RSS/기사 본문 전처리 (GPT 전달 전) ───────── */
+
+/** `setTimeout(() =>` 처럼 한글과 같은 줄에 붙은 JS 호출 제거 (괄호 균형) */
+function removeKeywordCalls(text: string, keyword: string): string {
+  const src = text;
+  const lower = src.toLowerCase();
+  const kwLower = keyword.toLowerCase();
+  const kwLen = keyword.length;
+  let out = "";
+  let i = 0;
+  while (i < src.length) {
+    const idx = lower.indexOf(kwLower, i);
+    if (idx === -1) {
+      out += src.slice(i);
+      break;
+    }
+    if (idx > 0 && /[A-Za-z0-9_$]/.test(src[idx - 1]!)) {
+      out += src.slice(i, idx + 1);
+      i = idx + 1;
+      continue;
+    }
+    let j = idx + kwLen;
+    while (j < src.length && /\s/.test(src[j]!)) j++;
+    if (src[j] !== "(") {
+      out += src.slice(i, idx + kwLen);
+      i = idx + kwLen;
+      continue;
+    }
+    let depth = 0;
+    let k = j;
+    for (; k < src.length; k++) {
+      const ch = src[k]!;
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) {
+          k++;
+          break;
+        }
+      }
+    }
+    out += src.slice(i, idx) + " ";
+    i = k;
+  }
+  return out;
+}
+
+function removeInlineJsPatterns(text: string): string {
+  let t = text;
+  const kw = [
+    "setTimeout",
+    "setInterval",
+    "requestAnimationFrame",
+    "queueMicrotask",
+    "cancelAnimationFrame",
+    "clearTimeout",
+    "clearInterval",
+    "addEventListener",
+    "removeEventListener",
+    "getElementById",
+    "getElementsByClassName",
+    "getElementsByTagName",
+    "querySelector",
+    "querySelectorAll",
+    "insertBefore",
+    "appendChild",
+    "createElement",
+    "dispatchEvent",
+    "JSON.parse",
+    "JSON.stringify",
+  ];
+  for (const k of kw) {
+    t = removeKeywordCalls(t, k);
+  }
+  // 점 포함 API (한 번씩)
+  t = t.replace(/\bdocument\.[a-zA-Z_$][\w$]*\s*\([^)]*\)/g, " ");
+  t = t.replace(/\bwindow\.[a-zA-Z_$][\w$]*\s*\([^)]*\)/g, " ");
+  t = t.replace(/\bnew\s+Function\s*\([^)]*\)/gi, " ");
+  // 화살표 함수 꼬리 (짧은 뭉치)
+  t = t.replace(/\([^)]*\)\s*=>\s*\{[^}]{0,800}\}/g, " ");
+  t = t.replace(/\([^)]*\)\s*=>\s*[^;]+;?/g, " ");
+  // 남은 콜백 잔재
+  t = t.replace(/=>/g, " ");
+  t = t.replace(/;\s*;/g, ";");
+  return t;
+}
+
+/** 한 줄이 스크립트·위젯·코드 조각으로 보이면 제외 */
+function isJsOrWidgetLine(line: string): boolean {
+  const s = line.trim();
+  if (s.length === 0) return true;
+  const low = s.toLowerCase();
+  if (
+    /blewidget|__widget|javascript:|data-widget|googletag|gtag\(|fbq\(|analytics|settimeout|setinterval/i.test(
+      s
+    )
+  ) {
+    return true;
+  }
+  if (/<\/?script/i.test(s) || /\bfunction\s*\(/.test(s)) return true;
+  if (/\b(var|let|const)\s+\w+\s*=/.test(s)) return true;
+  if (/document\.|window\.|addEventListener|querySelector|getElementById/i.test(s)) {
+    return true;
+  }
+  const braces = (s.match(/[{}]/g) ?? []).length;
+  const parens = (s.match(/[()]/g) ?? []).length;
+  const semis = (s.match(/;/g) ?? []).length;
+  if (braces >= 2 && semis >= 1) return true;
+  if (parens >= 4 && semis >= 1) return true;
+  if (/^[{}();,\s]+$/.test(s)) return true;
+  return false;
+}
+
+/** GPT/힌트용 문장 후보에서 제외 (코드·마크업 냄새) */
+function isJunkExtractedSentence(s: string): boolean {
+  const x = s.toLowerCase();
+  if (
+    /settimeout|setinterval|requestanimationframe|blewidget|__widget|javascript:/i.test(x)
+  ) {
+    return true;
+  }
+  if (/=>\s*\{|=>/.test(s)) return true;
+  if (/\bfunction\s*\(|\b(var|let|const)\s+\w+\s*=/.test(s)) return true;
+  if (/document\.|window\.|queryselector|getelementbyid/i.test(x)) return true;
+  if ((s.match(/;/g) ?? []).length >= 2 && (s.match(/[{}]/g) ?? []).length >= 1) {
+    return true;
+  }
+  if (/조회\s*수?\s*[:：]\s*[\d,만]/.test(s)) return true;
+  return false;
+}
+
+/**
+ * 뉴스 본문을 GPT에 넣기 전 정제: HTML/JS/광고 줄 제거, 공백·문자 정리.
+ */
+export function preprocessNewsTextForGpt(raw: string): string {
+  if (!raw) return "";
+  let t = raw.replace(/\uFEFF/g, "");
+
+  // HTML 주석
+  t = t.replace(/<!--[\s\S]*?-->/g, " ");
+  // 태그 제거 (중첩 대비 반복)
+  let prev = "";
+  while (t !== prev) {
+    prev = t;
+    t = t.replace(/<[^>]*>/g, "");
+  }
+
+  // 흔한 엔티티
+  t = t
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#\d+;/g, " ")
+    .replace(/&[a-z]{2,8};/gi, " ");
+
+  // 인라인 JS (setTimeout(() => …) 등) — 줄 나눔 전에 전체 텍스트에서 제거
+  t = removeInlineJsPatterns(t);
+
+  // 기자명·날짜·조회수·언론사 메타 등 제거
+  t = stripNewsBylineAndMeta(t);
+
+  // 줄 단위로 스크립트/위젯 제거 후 재결합
+  const lines = t.split(/\r?\n/).filter((line) => !isJsOrWidgetLine(line));
+  t = lines.join("\n");
+
+  // 제어 문자 제거(개행·탭은 공백으로)
+  t = t.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, " ");
+
+  // 본문 뉴스에 드문 `;` 는 코드 잔재일 가능성 ↑
+  t = t.replace(/;/g, " ");
+
+  // 한글·영숫자·일반 문장 부호 외는 공백으로 (`;` 제외)
+  t = t.replace(
+    /[^\uAC00-\uD7A3\u3131-\u318E\da-zA-Z\s.,!?…:'"()%\[\]·\-–—]/g,
+    " "
+  );
+
+  t = t.replace(/\s+/g, " ").trim();
+  return t;
 }
 
 /* ───────── 기사에서 문장 추출 ───────── */
@@ -264,7 +548,10 @@ function extractSentences(news: NewsItem[]): ExtractedSentence[] {
 
   for (let ai = 0; ai < news.length; ai++) {
     const n = news[ai]!;
-    const fullText = [n.title, n.summary, n.content]
+    const title = preprocessNewsTextForGpt(n.title);
+    const summary = preprocessNewsTextForGpt(n.summary);
+    const content = preprocessNewsTextForGpt(n.content);
+    const fullText = [title, summary, content]
       .filter(Boolean)
       .join(". ")
       .replace(/\n+/g, " ");
@@ -273,7 +560,12 @@ function extractSentences(news: NewsItem[]): ExtractedSentence[] {
       .split(/(?<=[.!?])\s+/)
       .flatMap((s) => s.split(/(?<=다[\.\s])/))
       .map((s) => s.trim())
-      .filter((s) => s.length >= 10 && /[가-힣]/.test(s));
+      .filter(
+        (s) =>
+          s.length >= 10 &&
+          /[가-힣]/.test(s) &&
+          !isJunkExtractedSentence(s)
+      );
 
     const seen = new Set<string>();
     for (const s of raw) {
@@ -651,6 +943,11 @@ export async function generatePuzzle(
 
 사용자가 번호가 붙은 문장 목록을 제공한다. 이 문장들은 실제 뉴스 기사 원문에서 추출한 것이다.
 
+뉴스 기사의 순수한 내용만 사용하고, 코드나 HTML, 광고성 문구는 절대 힌트에 포함하지 마세요.
+
+힌트는 반드시 기사의 순수 본문 내용만 사용하고, 기자 이름, 날짜, 조회수, 언론사명은 절대 포함하지 마세요.
+힌트는 완전한 문장으로 50자 이상 작성해주세요.
+
 너의 역할:
 1. 각 문장에서 크로스워드 정답으로 적합한 2~5글자 한국어 단어를 찾아라.
 2. 반드시 해당 문장 안에 그대로 등장하는 단어만 골라라.
@@ -674,6 +971,11 @@ export async function generatePuzzle(
         content: `아래 문장들에서 크로스워드 문항 ${GPT_WORD_COUNT}개를 만들어라.
 각 문항의 word는 해당 sentence_idx 문장 안에 등장하는 **조사 없는** 2~5글자 단어여야 한다(문장에 "단어+조사"로만 나와도, word는 어근만).
 단어들 사이에 공통 글자가 많은 조합을 우선 선택해라.
+
+뉴스 기사의 순수한 내용만 사용하고, 코드나 HTML, 광고성 문구는 절대 힌트에 포함하지 마세요.
+
+힌트는 반드시 기사의 순수 본문 내용만 사용하고, 기자 이름, 날짜, 조회수, 언론사명은 절대 포함하지 마세요.
+힌트는 완전한 문장으로 50자 이상 작성해주세요.
 
 ${sentenceList}`,
       },
@@ -712,7 +1014,9 @@ ${sentenceList}`,
       KO_PARTICLES.some((p) => sentenceData.sentence.includes(word + p));
     if (!wordInSentence) continue;
 
-    const shortSentence = clipSentenceAroundWord(sentenceData.sentence, word);
+    const shortSentence = sanitizeHintForDisplay(
+      clipSentenceAroundWord(sentenceData.sentence, word)
+    );
     const hint = applyUnderscoreHint(word, shortSentence);
     const definition = String(item?.definition ?? "").trim();
     const link = sentenceData.link;

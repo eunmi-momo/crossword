@@ -56,6 +56,12 @@ async function fetchArticleContent(link: string): Promise<string | null> {
       root.querySelector("main") ??
       root.querySelector("body");
 
+    if (article) {
+      article.querySelectorAll("script,style,noscript,iframe").forEach((el) => {
+        el.remove();
+      });
+    }
+
     const rawHtml = article?.innerHTML ?? "";
     const fullText = stripHtml(rawHtml);
 

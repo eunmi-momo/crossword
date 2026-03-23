@@ -27,19 +27,32 @@ export function bustPuzzlePrefetch(): void {
   inflight = null;
 }
 
+export type PrefetchPuzzleOptions = {
+  /** `true`면 캐시 무시 후 `/api/puzzle?force=1`로 재생성·저장 */
+  force?: boolean;
+};
+
 /**
  * 오늘 퍼즐 1회 로드(진행 중이면 동일 Promise 공유).
  * 성공 시 메모리 캐시에 저장.
  */
-export function prefetchTodayPuzzle(day?: string): Promise<GeneratedCrossword> {
+export function prefetchTodayPuzzle(
+  day?: string,
+  options?: PrefetchPuzzleOptions
+): Promise<GeneratedCrossword> {
   const d = day ?? todayKSTYmd();
-  if (cacheDate === d && cacheData) return Promise.resolve(cacheData);
+  if (options?.force) {
+    bustPuzzlePrefetch();
+  } else if (cacheDate === d && cacheData) {
+    return Promise.resolve(cacheData);
+  }
   if (inflight) return inflight;
 
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  const forceParam = options?.force ? "&force=1" : "";
   inflight = fetch(
     withBasePath(
-      `/api/puzzle?day=${encodeURIComponent(d)}&_=${encodeURIComponent(stamp)}`
+      `/api/puzzle?day=${encodeURIComponent(d)}${forceParam}&_=${encodeURIComponent(stamp)}`
     ),
     {
       cache: "no-store",

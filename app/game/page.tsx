@@ -575,8 +575,20 @@ export default function CrosswordGamePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <div className="mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
+    <div className="home-shell relative min-h-screen overflow-x-hidden text-[var(--foreground)]">
+      <div
+        className="home-bg-gradient pointer-events-none fixed inset-0 z-0"
+        aria-hidden
+      />
+      <div
+        className="home-blobs pointer-events-none fixed inset-0 z-0 overflow-hidden"
+        aria-hidden
+      >
+        <div className="home-blob home-blob--1" />
+        <div className="home-blob home-blob--2" />
+        <div className="home-blob home-blob--3" />
+      </div>
+      <div className="relative z-10 mx-auto w-full max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
         <header className="mb-4 sm:mb-6">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 shrink-0 text-left">
@@ -584,7 +596,7 @@ export default function CrosswordGamePage() {
                 href="https://news.sbs.co.kr"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                className="inline-block rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
                 aria-label="SBS 뉴스 (새 창)"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -630,19 +642,20 @@ export default function CrosswordGamePage() {
           </div>
         </header>
 
-        {/* 이름 없이 /game 직접 진입 시: 랭킹용 이름 입력 (딤 + 레이어) */}
+        {/* 이름 없이 /game 직접 진입 시: 랭킹용 이름 입력 (메인 글래스 모달과 동일) */}
         {showNameGate && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 sm:p-6">
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6">
+            <div className="glass-modal-backdrop" aria-hidden />
             <div
               role="dialog"
               aria-modal="true"
               aria-labelledby="game-name-gate-title"
-              className="w-full max-w-sm rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 shadow-xl sm:p-8"
+              className="glass-modal-panel p-6 sm:p-8"
               onMouseDown={(e) => e.stopPropagation()}
             >
               <h2
                 id="game-name-gate-title"
-                className="text-center text-xl font-extrabold text-[var(--card-foreground)] sm:text-2xl"
+                className="text-center text-xl font-extrabold text-neutral-900 sm:text-2xl"
               >
                 게임할 준비가 되셨나요?
               </h2>
@@ -654,14 +667,14 @@ export default function CrosswordGamePage() {
                   onFocus={() => void prefetchTodayPuzzle(todayKSTYmd())}
                   placeholder="이름을 입력하세요"
                   maxLength={20}
-                  className="w-full rounded-xl border-2 border-[var(--primary)] bg-[var(--card)] px-4 py-3 text-center text-sm text-[var(--card-foreground)] outline-none placeholder:text-[var(--card-muted)] focus:ring-2 focus:ring-[var(--primary)]"
+                  className="home-name-input w-full rounded-full border border-neutral-300 bg-white/95 px-5 py-3.5 text-center text-sm text-neutral-900 shadow-inner outline-none transition placeholder:text-neutral-400 focus:border-emerald-500 focus:bg-white focus:shadow-[0_0_24px_rgba(52,211,153,0.35)] sm:py-4 sm:text-base"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") commitGameNameGate();
                   }}
                 />
                 <button
                   type="button"
-                  className="inline-flex w-full items-center justify-center rounded-full bg-[var(--primary)] px-6 py-4 text-base font-bold text-white shadow-md transition hover:opacity-90"
+                  className="home-cta-btn inline-flex w-full items-center justify-center rounded-full px-8 py-4 text-base font-bold text-slate-900 shadow-lg transition sm:py-[1.1rem] sm:text-lg"
                   onClick={() => commitGameNameGate()}
                 >
                   오늘의 퀴즈 도전하기
@@ -972,7 +985,7 @@ export default function CrosswordGamePage() {
             {/* 모바일: 전체 가로·세로 문항 모달 */}
             {mobileAllCluesOpen && phase === "playing" && (
               <div
-                className="fixed inset-0 z-[60] flex flex-col bg-black/45 lg:hidden"
+                className="glass-modal-scrim fixed inset-0 z-[60] flex flex-col lg:hidden"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="mobile-clues-title"
@@ -983,17 +996,17 @@ export default function CrosswordGamePage() {
                   aria-label="닫기"
                   onClick={() => setMobileAllCluesOpen(false)}
                 />
-                <div className="max-h-[88vh] flex shrink-0 flex-col overflow-hidden rounded-t-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-xl">
-                  <div className="flex items-center justify-between border-b border-[var(--card-border)] px-4 py-3">
+                <div className="glass-modal-panel glass-modal-panel--sheet max-h-[88vh] flex shrink-0 flex-col overflow-hidden rounded-t-xl border-b-0 shadow-[0_-12px_48px_rgba(15,23,42,0.2)]">
+                  <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
                     <h2
                       id="mobile-clues-title"
-                      className="text-base font-extrabold text-[var(--card-foreground)]"
+                      className="text-base font-extrabold text-neutral-900"
                     >
                       전체 문항
                     </h2>
                     <button
                       type="button"
-                      className="rounded-full px-3 py-1.5 text-sm font-bold text-[var(--primary)]"
+                      className="rounded-full px-3 py-1.5 text-sm font-bold text-emerald-600"
                       onClick={() => setMobileAllCluesOpen(false)}
                     >
                       닫기
@@ -1013,7 +1026,7 @@ export default function CrosswordGamePage() {
                         ] as const
                       ).map((col) => (
                         <div key={col.key} className="flex flex-col">
-                          <h3 className="mb-3 text-sm font-extrabold text-[var(--card-foreground)]">
+                          <h3 className="mb-3 text-sm font-extrabold text-neutral-800">
                             {col.title}
                           </h3>
                           <ul className="space-y-3">
@@ -1025,8 +1038,8 @@ export default function CrosswordGamePage() {
                                   className={[
                                     "rounded-2xl border px-3 py-3 transition sm:px-4 sm:py-4",
                                     active
-                                      ? "border-[var(--primary)] bg-[var(--primary)]/10"
-                                      : "border-[var(--card-border)] bg-[var(--card)]",
+                                      ? "border-emerald-400/50 bg-emerald-500/15"
+                                      : "border-neutral-200 bg-neutral-50/90",
                                   ].join(" ")}
                                 >
                                   <button
@@ -1037,13 +1050,13 @@ export default function CrosswordGamePage() {
                                       setMobileAllCluesOpen(false);
                                     }}
                                   >
-                                    <div className="text-[11px] font-extrabold text-[var(--card-muted)]">
+                                    <div className="text-[11px] font-extrabold text-neutral-500">
                                       {p.number}
                                     </div>
-                                    <div className="mt-1 text-sm font-bold text-[var(--card-foreground)]">
+                                    <div className="mt-1 text-sm font-bold text-neutral-900">
                                       {p.definition}
                                     </div>
-                                    <div className="mt-2 text-sm text-[var(--card-muted)]">
+                                    <div className="mt-2 text-sm text-neutral-600">
                                       {p.hint}
                                     </div>
                                   </button>
@@ -1052,7 +1065,7 @@ export default function CrosswordGamePage() {
                                       href={p.link}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="inline-flex items-center rounded-full border border-[var(--card-border)] px-3 py-2 text-xs font-semibold text-[var(--card-foreground)]"
+                                      className="inline-flex items-center rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-800"
                                     >
                                       힌트 보기
                                     </a>
@@ -1071,13 +1084,14 @@ export default function CrosswordGamePage() {
           </div>
         )}
 
-        {/* Complete overlay — 미리보기: /game?previewComplete=1 (README 참고) */}
+        {/* Complete overlay — 글래스 모달 (메인과 동일 톤) */}
         {phase === "complete" && !completeModalDismissed && (
-          <div className="fixed inset-0 z-[70] grid place-items-center bg-black/30 p-4 sm:p-6">
-            <div className="relative w-full max-w-sm rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-8 pt-10 shadow-xl text-center">
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6">
+            <div className="glass-modal-backdrop" aria-hidden />
+            <div className="glass-modal-panel relative max-h-[90vh] overflow-y-auto p-8 pt-10">
               <button
                 type="button"
-                className="absolute right-2 top-2 rounded-full p-2 text-[var(--card-muted)] transition hover:bg-black/5 hover:text-[var(--card-foreground)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+                className="absolute right-2 top-2 rounded-full p-2 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
                 aria-label="닫기"
                 onClick={() => setCompleteModalDismissed(true)}
               >
@@ -1095,41 +1109,41 @@ export default function CrosswordGamePage() {
                   <path d="m6 6 12 12" />
                 </svg>
               </button>
-              <h2 className="text-3xl font-extrabold text-[var(--card-foreground)]">
+              <h2 className="text-3xl font-extrabold text-neutral-900">
                 축하합니다!
               </h2>
-              <p className="mt-2 text-lg font-bold text-[var(--card-foreground)]">
+              <p className="mt-2 text-lg font-bold text-neutral-800">
                 모든 크로스워드를 맞췄습니다.
               </p>
 
-              <p className="mt-5 text-sm text-[var(--card-muted)]">
+              <p className="mt-5 text-sm text-neutral-600">
                 당신의 실력에 박수를 보냅니다!
               </p>
 
               {(nameFromQuery ?? "").trim() ? (
                 !saved ? (
-                  <p className="mt-4 text-sm text-[var(--card-muted)]">
+                  <p className="mt-4 text-sm text-neutral-600">
                     순위를 불러오는 중…
                   </p>
                 ) : myRank != null ? (
-                  <div className="mt-4 rounded-xl bg-[var(--primary)]/10 px-6 py-4">
-                    <p className="text-sm text-[var(--card-muted)]">
+                  <div className="mt-4 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-6 py-4">
+                    <p className="text-sm text-neutral-700">
                       {(nameFromQuery ?? "").trim()}님의 순위
                     </p>
-                    <p className="mt-1 text-3xl font-extrabold text-[var(--primary)]">
+                    <p className="mt-1 text-3xl font-extrabold text-emerald-700">
                       {myRank}위
                     </p>
-                    <p className="mt-1 text-sm text-[var(--card-muted)]">
+                    <p className="mt-1 text-sm text-neutral-600">
                       소요시간: {formatTimer(timeSec)}
                     </p>
                   </div>
                 ) : (
-                  <p className="mt-4 text-sm text-[var(--card-muted)]">
+                  <p className="mt-4 text-sm text-neutral-600">
                     소요시간: {formatTimer(timeSec)}
                   </p>
                 )
               ) : (
-                <p className="mt-4 text-sm text-[var(--card-muted)]">
+                <p className="mt-4 text-sm text-neutral-600">
                   소요시간: {formatTimer(timeSec)}
                 </p>
               )}
@@ -1137,7 +1151,7 @@ export default function CrosswordGamePage() {
               <div className="mt-6 grid gap-3">
                 <button
                   type="button"
-                  className="w-full rounded-full bg-[var(--primary)] px-4 py-3 text-sm font-bold text-white shadow-md hover:opacity-90"
+                  className="home-cta-btn inline-flex w-full items-center justify-center rounded-full px-8 py-4 text-base font-bold text-slate-900 shadow-lg transition sm:py-[1.1rem] sm:text-lg"
                   onClick={() => router.push("/")}
                 >
                   오늘의 랭킹 보기
@@ -1145,7 +1159,7 @@ export default function CrosswordGamePage() {
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
                     type="button"
-                    className="w-full rounded-full border border-[var(--card-border)] bg-transparent px-3 py-3 text-sm font-semibold text-[var(--card-foreground)] hover:bg-[#5055fa]/10"
+                    className="home-cta-btn inline-flex w-full items-center justify-center rounded-full px-8 py-4 text-base font-bold text-slate-900 shadow-lg transition sm:py-[1.1rem] sm:text-lg"
                     onClick={() => {
                       setCompletePreviewDismissed(true);
                       setInputs({});
@@ -1166,7 +1180,7 @@ export default function CrosswordGamePage() {
                   <div className="relative flex min-h-[48px] items-center justify-center">
                     {bragTooltip ? (
                       <div
-                        className="absolute bottom-full left-1/2 z-10 mb-2 w-max max-w-[calc(100vw-1.5rem)] -translate-x-1/2 whitespace-nowrap rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white shadow-lg"
+                        className="glass-popup-surface absolute bottom-full left-1/2 z-10 mb-2 w-max max-w-[calc(100vw-1.5rem)] -translate-x-1/2 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold text-black"
                         role="tooltip"
                       >
                         {bragTooltip}
@@ -1174,7 +1188,7 @@ export default function CrosswordGamePage() {
                     ) : null}
                     <button
                       type="button"
-                      className="w-full rounded-full bg-amber-400 px-3 py-3 text-sm font-bold text-neutral-900 shadow-md transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="home-cta-btn inline-flex w-full items-center justify-center rounded-full px-8 py-4 text-base font-bold text-slate-900 shadow-lg transition disabled:cursor-not-allowed disabled:opacity-50 sm:py-[1.1rem] sm:text-lg"
                       disabled={!saved}
                       onClick={() => void handleBragShareCopyUrl()}
                     >

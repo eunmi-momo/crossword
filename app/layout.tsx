@@ -13,8 +13,9 @@ const nanumGothic = Nanum_Gothic({
 
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteOrigin()),
-  title: "뉴스 크로스워드",
-  description: "오늘의 뉴스로 만드는 크로스워드 퍼즐",
+  title: "SBS 뉴스 크로스워드",
+  description:
+    "게임처럼 즐기다 보면 어느새 상식 마스터! 지금 도전하세요~!",
 };
 
 export default function RootLayout({
