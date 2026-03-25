@@ -4,8 +4,12 @@ import OpenAI from "openai";
 import type { NewsItem } from "./fetchNews";
 
 const PUZZLE_COUNT = 15;
-const GPT_WORD_COUNT = 25;
-const NEWS_CONTEXT_COUNT = 30;
+/** GPT 후보 개수: 기사당 최대 2문항 필터 후에도 격자용 단어가 충분히 남도록 여유 */
+const GPT_WORD_COUNT = 36;
+/** 퍼즐 생성에 쓰는 기사 수(문장 풀) — fetchNews와 맞춰 넓게 */
+const NEWS_CONTEXT_COUNT = 45;
+/** 같은 기사(link)에서 나오는 문항 상한 */
+const MAX_WORDS_PER_ARTICLE = 2;
 const GRID_SIZE = 10;
 const MIN_INTERSECTIONS = 6;
 const MAX_ATTEMPTS = 100;
@@ -931,7 +935,7 @@ export async function generatePuzzle(
   for (const s of sentences) sentenceMap.set(s.idx, s);
 
   const sentenceList = sentences
-    .map((s) => `[${s.idx}] ${s.sentence}`)
+    .map((s) => `[${s.idx} · 기사${s.articleIdx}] ${s.sentence}`)
     .join("\n");
 
   const response = await client.chat.completions.create({
@@ -958,12 +962,13 @@ export async function generatePuzzle(
    예: "경찰"과 "경기" → '경'에서 교차 가능.
 5. definition에는 정답 단어의 사전적 의미를 국어사전 스타일로 한 문장으로 쓴다.
 6. 총 ${GPT_WORD_COUNT}개 문항을 만들어라.
+7. ★ **같은 기사에서 나온 문항은 최대 ${MAX_WORDS_PER_ARTICLE}개까지**이다. 문장 번호 옆의 "기사N"이 같은 경우가 같은 기사다. 서로 다른 기사에서 골고루 고르라.
 
 응답 형식 (JSON만 출력, 다른 말 없이):
 {"items": [{"word": "단어", "sentence_idx": 번호, "definition": "사전적 의미"}, ...]}
 
 - word: 조사 없는 2~5글자 단어만. 문장 속에 그 형태가 부분 문자열로 포함되면 된다(예: 문장의 "사고가"에 대해 word는 "사고").
-- sentence_idx: 해당 단어가 포함된 문장의 번호 (사용자가 제공한 [번호])
+- sentence_idx: 해당 단어가 포함된 문장의 번호 (사용자가 제공한 [번호]의 숫자만, 예: [12 · 기사3] → 12)
 - definition: 단어의 사전적 의미 (쉬운 말, 한 문장)`,
       },
       {
@@ -971,6 +976,7 @@ export async function generatePuzzle(
         content: `아래 문장들에서 크로스워드 문항 ${GPT_WORD_COUNT}개를 만들어라.
 각 문항의 word는 해당 sentence_idx 문장 안에 등장하는 **조사 없는** 2~5글자 단어여야 한다(문장에 "단어+조사"로만 나와도, word는 어근만).
 단어들 사이에 공통 글자가 많은 조합을 우선 선택해라.
+**같은 기사(문장 앞의 "기사N"이 동일)에서 고르는 문항은 최대 ${MAX_WORDS_PER_ARTICLE}개**이며, 가능하면 여러 기사에 골고루 분산하라.
 
 뉴스 기사의 순수한 내용만 사용하고, 코드나 HTML, 광고성 문구는 절대 힌트에 포함하지 마세요.
 
@@ -999,6 +1005,7 @@ ${sentenceList}`,
 
   const entries: WordEntry[] = [];
   const usedWords = new Set<string>();
+  const perArticleCount = new Map<string, number>();
 
   for (const item of items) {
     const word = normalizeAnswerWord(String(item?.word ?? ""));
@@ -1008,6 +1015,13 @@ ${sentenceList}`,
     const sIdx = Number(item?.sentence_idx ?? 0);
     const sentenceData = sentenceMap.get(sIdx);
     if (!sentenceData) continue;
+
+    const articleKey =
+      sentenceData.link.trim() !== ""
+        ? sentenceData.link
+        : `__article_${sentenceData.articleIdx}__`;
+    const usedForArticle = perArticleCount.get(articleKey) ?? 0;
+    if (usedForArticle >= MAX_WORDS_PER_ARTICLE) continue;
 
     const wordInSentence =
       sentenceData.sentence.includes(word) ||
@@ -1022,6 +1036,7 @@ ${sentenceList}`,
     const link = sentenceData.link;
 
     usedWords.add(word);
+    perArticleCount.set(articleKey, usedForArticle + 1);
     entries.push({ word, hint, definition, link });
   }
 

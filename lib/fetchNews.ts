@@ -4,9 +4,11 @@ import { parse as parseHtml } from "node-html-parser";
 const SBS_RSS_URL =
   "https://news.sbs.co.kr/news/newsflashRssFeed.do?plink=RSSREADER";
 
-const MAX_FEED_ITEMS = 30;
+/** RSS에서 가져올 최대 기사 수 (문장·출제 다양화) */
+const MAX_FEED_ITEMS = 50;
 const MIN_FEED_ITEMS = 10;
-const MAX_ARTICLES_WITH_BODY = 15;
+/** 본문을 직접 긁어오는 상위 N개 (나머지는 RSS 요약만) */
+const MAX_ARTICLES_WITH_BODY = 40;
 const MAX_CONTENT_LENGTH = 1500;
 
 /** 광고·앱 링크 등 불필요한 문장 제거 */

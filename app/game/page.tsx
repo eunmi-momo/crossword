@@ -105,6 +105,9 @@ export default function CrosswordGamePage() {
   const [activeId, setActiveId] = useState<number | null>(null);
   const activeIdRef = useRef<number | null>(null);
   const [inputs, setInputs] = useState<Record<CellKey, string>>({});
+  /** rAF 안에서 최신 inputs 참조(교차 칸 정답 보존) */
+  const inputsRef = useRef(inputs);
+  inputsRef.current = inputs;
 
   const inputRefs = useRef<Record<CellKey, HTMLInputElement | null>>({});
   const clueRefs = useRef<Record<number, HTMLLIElement | null>>({});
@@ -431,19 +434,12 @@ export default function CrosswordGamePage() {
 
   /**
    * 정답 입력 후 다음 칸으로 이동.
-   * 같은 키 입력이 포커스 이동 뒤 새 칸에 중복 적용되는 브라우저 이슈 대응:
-   * 이동 직후 다음 칸을 비우되, 교차 칸에 이미 맞춘 글자(정답과 일치)는 유지한다.
+   * - 교차 칸에 이미 맞춘 글자(state===정답)는 절대 지우지 않음(setInputs로 clear 금지).
+   * - 빈 칸으로 이동했을 때만, 이전 키가 새 input에 붙는 DOM 유령 입력을 제거.
    */
   function focusCellAfterAutoAdvance(nr: number, nc: number) {
     const nextKey = `${nr},${nc}` as CellKey;
     lastEditedCellRef.current = null;
-
-    setInputs((prev) => {
-      const expected = (solution.get(nextKey) ?? "").normalize("NFC");
-      const cur = (prev[nextKey] ?? "").normalize("NFC");
-      if (expected && cur === expected) return prev;
-      return { ...prev, [nextKey]: "" };
-    });
 
     requestAnimationFrame(() => {
       const el = inputRefs.current[nextKey];
@@ -451,19 +447,32 @@ export default function CrosswordGamePage() {
         el.focus({ preventScroll: false });
       }
       requestAnimationFrame(() => {
-        setInputs((prev) => {
-          const expected = (solution.get(nextKey) ?? "").normalize("NFC");
-          const cur = (prev[nextKey] ?? "").normalize("NFC");
-          const el2 = inputRefs.current[nextKey];
-          if (expected && cur === expected) {
-            if (el2 && el2.value.normalize("NFC") !== expected) {
-              el2.value = cur;
+        const el2 = inputRefs.current[nextKey];
+        if (!el2) return;
+
+        const expected = (solution.get(nextKey) ?? "").normalize("NFC");
+        const stateVal = (inputsRef.current[nextKey] ?? "").normalize("NFC");
+
+        if (expected && stateVal === expected) {
+          const dom = el2.value.normalize("NFC");
+          if (dom !== stateVal) {
+            el2.value = inputsRef.current[nextKey] ?? "";
+          }
+          return;
+        }
+
+        if (!stateVal) {
+          const dom = el2.value.normalize("NFC");
+          if (!dom) return;
+          el2.value = "";
+          setInputs((prev) => {
+            const p = (prev[nextKey] ?? "").normalize("NFC");
+            if (p === dom) {
+              return { ...prev, [nextKey]: "" };
             }
             return prev;
-          }
-          if (el2) el2.value = "";
-          return { ...prev, [nextKey]: "" };
-        });
+          });
+        }
       });
     });
   }
