@@ -434,12 +434,18 @@ export default function CrosswordGamePage() {
 
   /**
    * 정답 입력 후 다음 칸으로 이동.
-   * - 교차 칸에 이미 맞춘 글자(state===정답)는 절대 지우지 않음(setInputs로 clear 금지).
-   * - 빈 칸으로 이동했을 때만, 이전 키가 새 input에 붙는 DOM 유령 입력을 제거.
+   * - 교차 칸에 이미 정답이 있으면 DOM만 state에 맞춤.
+   * - 방금 맞춘 글자가 다음 칸 정답과 다를 때 같은 글자로 복제되면(브라우저 유령 입력) 제거.
+   * - 빈 칸으로 이동했는데 DOM에만 글자가 붙은 경우 제거.
    */
-  function focusCellAfterAutoAdvance(nr: number, nc: number) {
+  function focusCellAfterAutoAdvance(
+    nr: number,
+    nc: number,
+    justTypedChar: string
+  ) {
     const nextKey = `${nr},${nc}` as CellKey;
     lastEditedCellRef.current = null;
+    const dupOf = justTypedChar.normalize("NFC");
 
     requestAnimationFrame(() => {
       const el = inputRefs.current[nextKey];
@@ -461,9 +467,24 @@ export default function CrosswordGamePage() {
           return;
         }
 
-        if (!stateVal) {
-          const dom = el2.value.normalize("NFC");
-          if (!dom) return;
+        // 이전 칸에서 맞춘 글자가 다음 칸에만 잘못 복제된 경우 (정답과 다름)
+        if (
+          dupOf &&
+          stateVal === dupOf &&
+          expected &&
+          stateVal !== expected
+        ) {
+          el2.value = "";
+          setInputs((prev) => ({ ...prev, [nextKey]: "" }));
+          return;
+        }
+
+        const dom = el2.value.normalize("NFC");
+        if (!stateVal && dom) {
+          if (dupOf && dom === dupOf && expected && dom !== expected) {
+            el2.value = "";
+            return;
+          }
           el2.value = "";
           setInputs((prev) => {
             const p = (prev[nextKey] ?? "").normalize("NFC");
@@ -516,14 +537,6 @@ export default function CrosswordGamePage() {
     const key = `${r},${c}` as CellKey;
     const next = lastNfcChar(value);
 
-    const currentVal = inputs[key] ?? "";
-    const expected = solution.get(key);
-
-    // 빈 값으로 정답 칸을 덮어쓰지 않기
-    if (!next && expected && currentVal.normalize("NFC") === expected.normalize("NFC")) {
-      return;
-    }
-
     lastEditedCellRef.current = { r, c };
     setInputs((prev) => ({ ...prev, [key]: next }));
   }
@@ -562,7 +575,7 @@ export default function CrosswordGamePage() {
         : placement.col;
 
     lastEditedCellRef.current = null;
-    focusCellAfterAutoAdvance(nr, nc);
+    focusCellAfterAutoAdvance(nr, nc, v);
   }, [inputs, isInteractive, placements, solution]);
 
   function handleCellKeyDown(
@@ -573,19 +586,6 @@ export default function CrosswordGamePage() {
     const nk = e.nativeEvent as KeyboardEvent;
     if (nk.isComposing || e.keyCode === 229) return;
     const key = `${r},${c}` as CellKey;
-    const v = (inputs[key] ?? "").normalize("NFC");
-    const expected = (solution.get(key) ?? "").normalize("NFC");
-    if (
-      v &&
-      expected &&
-      v === expected &&
-      e.key.length === 1 &&
-      !e.ctrlKey &&
-      !e.metaKey &&
-      !e.altKey
-    ) {
-      e.preventDefault();
-    }
     if (e.key === "Backspace" && !(inputs[key] ?? "")) {
       const placement =
         getPreferredPlacementForCell(r, c).pick ??
