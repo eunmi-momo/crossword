@@ -5,6 +5,7 @@ import path from "node:path";
 import { config as dotenvConfig } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import type { PlacedPuzzleItem } from "@/lib/generatePuzzle";
+import { isYmdString, todayKSTYmd, tomorrowKSTYmd } from "@/lib/kstDate";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -91,16 +92,6 @@ function getErrorMessage(err: unknown): string {
   return "퍼즐 생성 중 오류가 발생했습니다.";
 }
 
-function todayKSTYmd(): string {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  return fmt.format(new Date()); // yyyy-mm-dd
-}
-
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -114,10 +105,16 @@ export async function GET(request: Request) {
     // .env.local 강제 로드 (환경에 따라 Next가 못 읽는 경우 대비)
     dotenvConfig({ path: path.join(process.cwd(), ".env.local") });
     const supabase = getSupabase();
-    const date = todayKSTYmd();
 
     const url = new URL(request.url);
     const force = url.searchParams.get("force") === "1";
+    const today = todayKSTYmd();
+    const tomorrow = tomorrowKSTYmd();
+    const rawDay = url.searchParams.get("day");
+    const date =
+      rawDay && isYmdString(rawDay) && (rawDay === today || rawDay === tomorrow)
+        ? rawDay
+        : today;
 
     if (!force) {
       const { data: existing, error: selectErr } = await supabase

@@ -11,7 +11,8 @@ import {
 } from "@/lib/puzzlePrefetch";
 import { withBasePath } from "@/lib/basePath";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
-import { buildShareLandingUrl } from "@/lib/siteUrl";
+import { shareViaKakaoFeed } from "@/lib/kakaoShare";
+import { buildShareClipboardBlock } from "@/lib/shareBrag";
 
 type CellKey = `${number},${number}`;
 
@@ -431,21 +432,38 @@ export default function CrosswordGamePage() {
   /**
    * 정답 입력 후 다음 칸으로 이동.
    * 같은 키 입력이 포커스 이동 뒤 새 칸에 중복 적용되는 브라우저 이슈 대응:
-   * 이동 직후 다음 칸 state/DOM을 비우고, keydown에서 정답 완료 칸의 추가 입력은 막음.
+   * 이동 직후 다음 칸을 비우되, 교차 칸에 이미 맞춘 글자(정답과 일치)는 유지한다.
    */
   function focusCellAfterAutoAdvance(nr: number, nc: number) {
     const nextKey = `${nr},${nc}` as CellKey;
     lastEditedCellRef.current = null;
-    setInputs((prev) => ({ ...prev, [nextKey]: "" }));
+
+    setInputs((prev) => {
+      const expected = (solution.get(nextKey) ?? "").normalize("NFC");
+      const cur = (prev[nextKey] ?? "").normalize("NFC");
+      if (expected && cur === expected) return prev;
+      return { ...prev, [nextKey]: "" };
+    });
+
     requestAnimationFrame(() => {
       const el = inputRefs.current[nextKey];
       if (el) {
         el.focus({ preventScroll: false });
       }
       requestAnimationFrame(() => {
-        const el2 = inputRefs.current[nextKey];
-        if (el2) el2.value = "";
-        setInputs((prev) => ({ ...prev, [nextKey]: "" }));
+        setInputs((prev) => {
+          const expected = (solution.get(nextKey) ?? "").normalize("NFC");
+          const cur = (prev[nextKey] ?? "").normalize("NFC");
+          const el2 = inputRefs.current[nextKey];
+          if (expected && cur === expected) {
+            if (el2 && el2.value.normalize("NFC") !== expected) {
+              el2.value = cur;
+            }
+            return prev;
+          }
+          if (el2) el2.value = "";
+          return { ...prev, [nextKey]: "" };
+        });
       });
     });
   }
@@ -606,19 +624,33 @@ export default function CrosswordGamePage() {
 
   async function handleBragShareCopyUrl() {
     const timeMmSs = formatTimer(timeSec);
-    const linkUrl = buildShareLandingUrl({
+    const clipboardText = buildShareClipboardBlock({
       rank: myRank,
       timeMmSs,
     });
     setBragManualCopyUrl(null);
-    const result = await copyTextToClipboard(linkUrl);
+
+    const result = await copyTextToClipboard(clipboardText);
     if (result === "failed") {
-      setBragManualCopyUrl(linkUrl);
-      setBragTooltip(
-        "아래 주소를 길게 눌러 직접 복사해 주세요."
-      );
+      setBragManualCopyUrl(clipboardText);
+      setBragTooltip("아래를 길게 눌러 직접 복사해 주세요.");
     } else {
-      setBragTooltip("URL이 복사되었습니다");
+      setBragTooltip("메시지와 링크가 복사되었습니다");
+    }
+  }
+
+  async function handleKakaoShare() {
+    try {
+      setBragManualCopyUrl(null);
+      await shareViaKakaoFeed({
+        rank: myRank,
+        timeMmSs: formatTimer(timeSec),
+      });
+      setBragTooltip("카카오톡 공유창이 열렸습니다");
+    } catch (e) {
+      setBragTooltip(
+        e instanceof Error ? e.message : "카카오톡 공유에 실패했습니다"
+      );
     }
   }
 
@@ -1204,48 +1236,84 @@ export default function CrosswordGamePage() {
                 >
                   오늘의 랭킹 보기
                 </button>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-                  <button
-                    type="button"
-                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-neutral-300 bg-neutral-200 px-8 py-4 text-base font-bold text-neutral-800 shadow-sm transition hover:bg-neutral-300 sm:py-[1.1rem] sm:text-lg"
-                    onClick={() => {
-                      setCompletePreviewDismissed(true);
-                      setInputs({});
-                      activeIdRef.current = null;
-                      setActiveId(null);
-                      lastClickedCellRef.current = null;
-                      setError(null);
-                      setTimeSec(0);
-                      setTimerFrozen(false);
-                      setSaved(false);
-                      setMyRank(null);
-                      rankingSaveStartedRef.current = false;
-                      setPhase("playing");
-                    }}
-                  >
-                    다시 풀기
-                  </button>
-                  <div className="relative flex min-h-0 flex-1 flex-col justify-center">
-                    {bragTooltip ? (
-                      <div
-                        className={[
-                          "glass-popup-surface absolute bottom-full left-1/2 z-10 mb-2 max-w-[calc(100vw-1.5rem)] -translate-x-1/2 rounded-xl px-3 py-2 text-xs font-semibold text-black",
-                          bragManualCopyUrl
-                            ? "w-max max-w-[min(100vw-2rem,18rem)] whitespace-normal text-left leading-snug"
-                            : "w-max whitespace-nowrap",
-                        ].join(" ")}
-                        role="tooltip"
-                      >
-                        {bragTooltip}
-                      </div>
-                    ) : null}
+                <button
+                  type="button"
+                  className="inline-flex w-full items-center justify-center rounded-full border border-neutral-300 bg-neutral-200 px-8 py-4 text-base font-bold text-neutral-800 shadow-sm transition hover:bg-neutral-300 sm:py-[1.1rem] sm:text-lg"
+                  onClick={() => {
+                    setCompletePreviewDismissed(true);
+                    setInputs({});
+                    activeIdRef.current = null;
+                    setActiveId(null);
+                    lastClickedCellRef.current = null;
+                    setError(null);
+                    setTimeSec(0);
+                    setTimerFrozen(false);
+                    setSaved(false);
+                    setMyRank(null);
+                    rankingSaveStartedRef.current = false;
+                    setPhase("playing");
+                  }}
+                >
+                  다시 풀기
+                </button>
+
+                <p className="mt-1 text-center text-base font-bold text-neutral-800">
+                  친구에게 자랑하기
+                </p>
+
+                <div className="relative flex flex-col items-center gap-3">
+                  {bragTooltip ? (
+                    <div
+                      className={[
+                        "glass-popup-surface pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 max-w-[calc(100vw-1.5rem)] -translate-x-1/2 rounded-xl px-3 py-2 text-xs font-semibold text-black",
+                        bragManualCopyUrl
+                          ? "w-max max-w-[min(100vw-2rem,18rem)] whitespace-normal text-left leading-snug"
+                          : "w-max whitespace-nowrap text-center",
+                      ].join(" ")}
+                      role="status"
+                    >
+                      {bragTooltip}
+                    </div>
+                  ) : null}
+                  <div className="flex items-center justify-center gap-6">
                     <button
                       type="button"
-                      className="inline-flex w-full items-center justify-center rounded-full border border-[#e6c200] bg-[#FEE500] px-8 py-4 text-base font-bold text-slate-900 shadow-sm transition hover:brightness-[0.97] disabled:cursor-not-allowed disabled:opacity-50 sm:py-[1.1rem] sm:text-lg"
+                      title="카카오톡으로 공유"
+                      disabled={!saved}
+                      onClick={() => void handleKakaoShare()}
+                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#FEE500] text-[#191919] shadow-md transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <span className="sr-only">카카오톡 공유</span>
+                      <svg
+                        aria-hidden
+                        viewBox="0 0 24 24"
+                        className="h-8 w-8"
+                        fill="currentColor"
+                      >
+                        <path d="M12 3C6.5 3 2 6.58 2 11.07c0 2.47 1.32 4.67 3.37 6.03-.15.52-.97 3.35-.99 3.58 0 .05-.01.1.02.14.03.04.09.05.14.04.22-.03 2.58-1.77 3.01-2.08.83.23 1.71.35 2.61.35 5.5 0 10-3.58 10-8.07C22 6.58 17.5 3 12 3z" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      title="제목·메시지·URL 복사"
                       disabled={!saved}
                       onClick={() => void handleBragShareCopyUrl()}
+                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-neutral-300 bg-white text-neutral-700 shadow-md transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      친구에게 자랑하기
+                      <span className="sr-only">URL·메시지 복사</span>
+                      <svg
+                        aria-hidden
+                        viewBox="0 0 24 24"
+                        className="h-7 w-7"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <rect x="9" y="9" width="13" height="13" rx="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
                     </button>
                   </div>
                 </div>

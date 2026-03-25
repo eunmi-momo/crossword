@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import HomePageClient from "./HomePageClient";
 import {
+  buildOgDescriptionFromQuery,
+  SHARE_PAGE_TITLE,
+} from "@/lib/shareBrag";
+import {
   getShareLandingPath,
   getShareOgImageUrlForMetadata,
   getSiteOrigin,
 } from "@/lib/siteUrl";
-
-const OG_TITLE = "SBS 뉴스 크로스워드";
 
 const DEFAULT_DESCRIPTION =
   "게임처럼 즐기다 보면 어느새 상식 마스터! 지금 도전하세요~!";
@@ -34,36 +36,31 @@ export async function generateMetadata({
     : `${origin}${path}`;
 
   const imageUrl = getShareOgImageUrlForMetadata(rank, time);
-  const description =
-    rank && time
-      ? `나 ${rank}위 달성! 풀이시간 ${time} ⏱️ 너도 도전해봐~`
-      : time
-        ? `나 퍼즐 완주! 풀이시간 ${time} ⏱️ 너도 도전해봐~`
-        : DEFAULT_DESCRIPTION;
+  const description = buildOgDescriptionFromQuery(rank, time, DEFAULT_DESCRIPTION);
 
   return {
-    title: OG_TITLE,
+    title: SHARE_PAGE_TITLE,
     description,
     alternates: {
       canonical: canonicalUrl,
     },
     openGraph: {
       url: canonicalUrl,
-      title: OG_TITLE,
+      title: SHARE_PAGE_TITLE,
       description,
       images: [
         {
           url: imageUrl,
           width: 1200,
           height: 630,
-          alt: OG_TITLE,
+          alt: SHARE_PAGE_TITLE,
         },
       ],
       type: "website",
     },
     twitter: {
       card: "summary_large_image",
-      title: OG_TITLE,
+      title: SHARE_PAGE_TITLE,
       description,
       images: [imageUrl],
     },

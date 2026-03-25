@@ -15,6 +15,16 @@ export function getShareLandingPath(): string {
   return base.startsWith("/") ? base : `/${base}`;
 }
 
+/**
+ * 카카오톡 기본 공유용 랜딩 (쿼리 없음)
+ * 예: http://34.56.71.179:3000/crossword
+ */
+export function buildKakaoSharePageUrl(): string {
+  const origin = getSiteOrigin();
+  const path = getShareLandingPath();
+  return `${origin}${path}`;
+}
+
 /** 공유용 랜딩 URL (?rank & ?time 으로 OG 이미지·메타 연동) */
 export function buildShareLandingUrl(opts: {
   rank: number | null;
