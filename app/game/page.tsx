@@ -110,6 +110,8 @@ export default function CrosswordGamePage() {
   inputsRef.current = inputs;
 
   const inputRefs = useRef<Record<CellKey, HTMLInputElement | null>>({});
+  /** 한글 IME 조합 중인 칸 (모바일 웹·PC 공통 안정화) */
+  const composingCellKeyRef = useRef<CellKey | null>(null);
   const clueRefs = useRef<Record<number, HTMLLIElement | null>>({});
   const lastEditedCellRef = useRef<{ r: number; c: number } | null>(null);
   const lastClickedCellRef = useRef<string | null>(null);
@@ -433,10 +435,73 @@ export default function CrosswordGamePage() {
   }
 
   /**
+   * 다음 칸 포커스 직후 DOM/state 정리 (교차 정답 보존·유령 입력 제거).
+   * 조합 중에는 유령 제거·복제 제거를 하지 않고 compositionend 후 한 번 더 실행.
+   */
+  function syncCellAfterAutoAdvance(nextKey: CellKey, dupOf: string) {
+    const el2 = inputRefs.current[nextKey];
+    if (!el2) return;
+
+    const expected = (solution.get(nextKey) ?? "").normalize("NFC");
+    const stateVal = (inputsRef.current[nextKey] ?? "").normalize("NFC");
+    const dom = el2.value.normalize("NFC");
+    const composingHere = composingCellKeyRef.current === nextKey;
+
+    if (expected && stateVal === expected) {
+      if (dom !== stateVal) {
+        el2.value = inputsRef.current[nextKey] ?? "";
+      }
+      return;
+    }
+
+    // 교차: DOM은 정답인데 state만 어긋남 — DOM은 건드리지 않고 state만 맞춤
+    if (expected && dom === expected && stateVal !== expected) {
+      setInputs((prev) => ({ ...prev, [nextKey]: expected }));
+      return;
+    }
+
+    if (composingHere) {
+      // 부분 조합(ㄱ·ㅏ…)이 dom에 있을 수 있어 유령 제거·복제 제거는 하지 않음
+      el2.addEventListener(
+        "compositionend",
+        () => {
+          queueMicrotask(() => syncCellAfterAutoAdvance(nextKey, dupOf));
+        },
+        { once: true }
+      );
+      return;
+    }
+
+    if (
+      dupOf &&
+      stateVal === dupOf &&
+      expected &&
+      stateVal !== expected
+    ) {
+      el2.value = "";
+      setInputs((prev) => ({ ...prev, [nextKey]: "" }));
+      return;
+    }
+
+    if (!stateVal && dom) {
+      if (dupOf && dom === dupOf && expected && dom !== expected) {
+        el2.value = "";
+        return;
+      }
+      el2.value = "";
+      setInputs((prev) => {
+        const p = (prev[nextKey] ?? "").normalize("NFC");
+        if (p === dom) {
+          return { ...prev, [nextKey]: "" };
+        }
+        return prev;
+      });
+    }
+  }
+
+  /**
    * 정답 입력 후 다음 칸으로 이동.
-   * - 교차 칸에 이미 정답이 있으면 DOM만 state에 맞춤.
-   * - 방금 맞춘 글자가 다음 칸 정답과 다를 때 같은 글자로 복제되면(브라우저 유령 입력) 제거.
-   * - 빈 칸으로 이동했는데 DOM에만 글자가 붙은 경우 제거.
+   * rAF 두 번 + microtask로 모바일 키보드/레이아웃 반영 후 동기화.
    */
   function focusCellAfterAutoAdvance(
     nr: number,
@@ -453,49 +518,42 @@ export default function CrosswordGamePage() {
         el.focus({ preventScroll: false });
       }
       requestAnimationFrame(() => {
-        const el2 = inputRefs.current[nextKey];
-        if (!el2) return;
-
-        const expected = (solution.get(nextKey) ?? "").normalize("NFC");
-        const stateVal = (inputsRef.current[nextKey] ?? "").normalize("NFC");
-
-        if (expected && stateVal === expected) {
-          const dom = el2.value.normalize("NFC");
-          if (dom !== stateVal) {
-            el2.value = inputsRef.current[nextKey] ?? "";
-          }
-          return;
-        }
-
-        // 이전 칸에서 맞춘 글자가 다음 칸에만 잘못 복제된 경우 (정답과 다름)
-        if (
-          dupOf &&
-          stateVal === dupOf &&
-          expected &&
-          stateVal !== expected
-        ) {
-          el2.value = "";
-          setInputs((prev) => ({ ...prev, [nextKey]: "" }));
-          return;
-        }
-
-        const dom = el2.value.normalize("NFC");
-        if (!stateVal && dom) {
-          if (dupOf && dom === dupOf && expected && dom !== expected) {
-            el2.value = "";
-            return;
-          }
-          el2.value = "";
-          setInputs((prev) => {
-            const p = (prev[nextKey] ?? "").normalize("NFC");
-            if (p === dom) {
-              return { ...prev, [nextKey]: "" };
-            }
-            return prev;
-          });
-        }
+        queueMicrotask(() => {
+          syncCellAfterAutoAdvance(nextKey, dupOf);
+        });
       });
     });
+  }
+
+  /** 정답 칸이 채워졌을 때 다음 칸으로 자동 이동 (조합 중이면 compositionend 후) */
+  function advanceFocusAfterCorrectCell(cell: { r: number; c: number }) {
+    const key = `${cell.r},${cell.c}` as CellKey;
+    const v = (inputsRef.current[key] ?? "").normalize("NFC");
+    const expected = (solution.get(key) ?? "").normalize("NFC");
+    if (!v || !expected || v !== expected) return;
+
+    const { candidates } = getPreferredPlacementForCell(cell.r, cell.c);
+    const currentId = activeIdRef.current;
+    const placement =
+      candidates.find((p) => p.id === currentId) ?? candidates[0] ?? null;
+    if (!placement) return;
+    const idx =
+      placement.direction === "across"
+        ? cell.c - placement.col
+        : cell.r - placement.row;
+    if (idx < 0 || idx >= placement.word.length - 1) return;
+
+    const nr =
+      placement.direction === "across"
+        ? placement.row
+        : placement.row + idx + 1;
+    const nc =
+      placement.direction === "across"
+        ? placement.col + idx + 1
+        : placement.col;
+
+    lastEditedCellRef.current = null;
+    focusCellAfterAutoAdvance(nr, nc, v);
   }
 
   /** NFC 기준 한 글자. NFD "속"(ㅅ+ㅗ+ㄱ)을 "속" 하나로 취급 */
@@ -546,36 +604,7 @@ export default function CrosswordGamePage() {
     if (!isInteractive) return;
     const cell = lastEditedCellRef.current;
     if (!cell) return;
-
-    const key = `${cell.r},${cell.c}` as CellKey;
-
-    const v = (inputs[key] ?? "").normalize("NFC");
-    const expected = (solution.get(key) ?? "").normalize("NFC");
-    if (!v || !expected || v !== expected) return;
-
-    // 현재 활성 문항이 이 칸을 포함하면 그 방향 우선 (세로 문제면 아래로 이동)
-    const { candidates } = getPreferredPlacementForCell(cell.r, cell.c);
-    const currentId = activeIdRef.current;
-    const placement =
-      candidates.find((p) => p.id === currentId) ?? candidates[0] ?? null;
-    if (!placement) return;
-    const idx =
-      placement.direction === "across"
-        ? cell.c - placement.col
-        : cell.r - placement.row;
-    if (idx < 0 || idx >= placement.word.length - 1) return;
-
-    const nr =
-      placement.direction === "across"
-        ? placement.row
-        : placement.row + idx + 1;
-    const nc =
-      placement.direction === "across"
-        ? placement.col + idx + 1
-        : placement.col;
-
-    lastEditedCellRef.current = null;
-    focusCellAfterAutoAdvance(nr, nc, v);
+    advanceFocusAfterCorrectCell(cell);
   }, [inputs, isInteractive, placements, solution]);
 
   function handleCellKeyDown(
@@ -895,6 +924,14 @@ export default function CrosswordGamePage() {
                                 }}
                                 value={filled}
                                 onFocus={() => setActivePlacementForCell(r, c)}
+                                onCompositionStart={() => {
+                                  composingCellKeyRef.current = key;
+                                }}
+                                onCompositionEnd={() => {
+                                  if (composingCellKeyRef.current === key) {
+                                    composingCellKeyRef.current = null;
+                                  }
+                                }}
                                 onChange={(e) => handleCellChange(r, c, e.target.value)}
                                 onKeyDown={(e) => handleCellKeyDown(e, r, c)}
                                 inputMode="text"
