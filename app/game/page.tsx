@@ -470,20 +470,22 @@ export default function CrosswordGamePage() {
       return;
     }
 
+    // 이전 칸 글자가 교차칸에만 잘못 복제된 경우. 빈 칸으로 만들면 세로 등으로 이미 맞춘 정답까지 지워짐 → 정답이 있으면 expected로 복구
     if (
       dupOf &&
       stateVal === dupOf &&
       expected &&
       stateVal !== expected
     ) {
-      el2.value = "";
-      setInputs((prev) => ({ ...prev, [nextKey]: "" }));
+      setInputs((prev) => ({ ...prev, [nextKey]: expected }));
+      el2.value = expected;
       return;
     }
 
     if (!stateVal && dom) {
       if (dupOf && dom === dupOf && expected && dom !== expected) {
-        el2.value = "";
+        setInputs((prev) => ({ ...prev, [nextKey]: expected }));
+        el2.value = expected;
         return;
       }
       el2.value = "";
