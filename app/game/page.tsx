@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { GeneratedCrossword, PlacedPuzzleItem } from "@/lib/generatePuzzle";
 import {
   bustPuzzlePrefetch,
-  getPrefetchedPuzzle,
+  getCachedOrPersistedPuzzle,
   prefetchTodayPuzzle,
 } from "@/lib/puzzlePrefetch";
 import { withBasePath } from "@/lib/basePath";
@@ -85,15 +85,10 @@ export default function CrosswordGamePage() {
 
   const nameFromQuery = query.name;
   const promptNameFromQuery = query.promptName;
-  const [loading, setLoading] = useState(() => {
-    const day = todayKSTYmd();
-    return getPrefetchedPuzzle(day) == null;
-  });
+  /** SSR·첫 페인트와 맞추고, 실제 캐시는 useLayoutEffect에서 즉시 반영(메모리·localStorage) */
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<GeneratedCrossword | null>(() => {
-    const day = todayKSTYmd();
-    return getPrefetchedPuzzle(day);
-  });
+  const [data, setData] = useState<GeneratedCrossword | null>(null);
   const bustFirstPuzzleLoadRef = useRef(false);
 
   const [phase, setPhase] = useState<"start" | "playing" | "complete">("start");
@@ -217,18 +212,21 @@ export default function CrosswordGamePage() {
     }
   }
 
-  // 페이지 진입 시: 미리 받아 둔 캐시(메인·레이아웃) 있으면 네트워크 대기 없이 표시
-  useEffect(() => {
+  // 페이지 진입 시: 메모리 프리페치·localStorage(재방문) 있으면 첫 페인트 전에 반영
+  useLayoutEffect(() => {
     if (phase !== "start") return;
     setSaved(false);
     setPhase("playing");
     const bust = bustFirstPuzzleLoadRef.current;
     bustFirstPuzzleLoadRef.current = false;
     const day = todayKSTYmd();
-    if (!bust && getPrefetchedPuzzle(day)) {
-      setData(getPrefetchedPuzzle(day)!);
-      setLoading(false);
-      return;
+    if (!bust) {
+      const cached = getCachedOrPersistedPuzzle(day);
+      if (cached) {
+        setData(cached);
+        setLoading(false);
+        return;
+      }
     }
     void loadPuzzle({ background: false, bust });
     // eslint-disable-next-line react-hooks/exhaustive-deps
