@@ -1,13 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
-import OpenAI from "openai";
+import OpenAI, { RateLimitError } from "openai";
 import type { NewsItem } from "./fetchNews";
 
 const PUZZLE_COUNT = 15;
 /** GPT 후보 개수: 기사당 최대 2문항 필터 후에도 격자용 단어가 충분히 남도록 여유 */
-const GPT_WORD_COUNT = 36;
-/** 퍼즐 생성에 쓰는 기사 수(문장 풀) — fetchNews와 맞춰 넓게 */
-const NEWS_CONTEXT_COUNT = 45;
+const GPT_WORD_COUNT = 28;
+/** 퍼즐 생성에 쓰는 기사 수(문장 풀) — TPM·입력 토큰 한도를 넘기지 않게 보수적으로 */
+const NEWS_CONTEXT_COUNT = 28;
+/** GPT user 메시지에 넣는 문장 개수 상한(기사별로 골고루 샘플) */
+const MAX_PROMPT_SENTENCES = 90;
+/** 프롬프트용 문장 글자 수 상한(전체 문장은 힌트용으로 메모리에 유지) */
+const MAX_CHARS_PER_PROMPT_SENTENCE = 118;
+/** 완성 토큰 상한 — 기본값이 크면 TPM 예약량이 한도를 넘을 수 있음 */
+const GPT_MAX_COMPLETION_TOKENS = 5000;
 /** 같은 기사(link)에서 나오는 문항 상한 */
 const MAX_WORDS_PER_ARTICLE = 2;
 const GRID_SIZE = 10;
@@ -588,6 +594,48 @@ function extractSentences(news: NewsItem[]): ExtractedSentence[] {
   return result;
 }
 
+/** GPT user 본문 길이만 줄임(힌트는 원문 sentence 사용) */
+function clipSentenceForGptPrompt(sentence: string, maxChars: number): string {
+  const t = sentence.replace(/\s+/g, " ").trim();
+  if (t.length <= maxChars) return t;
+  return `${t.slice(0, Math.max(1, maxChars - 1))}…`;
+}
+
+/**
+ * 문장이 너무 많을 때 기사별로 한 줄씩 돌아가며 고름 → 앞쪽 기사만 쏠리지 않음.
+ * sentence_idx·sentenceMap은 원본 idx를 유지한다.
+ */
+function limitSentencesBalanced(
+  sentences: ExtractedSentence[],
+  max: number
+): ExtractedSentence[] {
+  if (sentences.length <= max) return sentences;
+  const byArt = new Map<number, ExtractedSentence[]>();
+  for (const s of sentences) {
+    const row = byArt.get(s.articleIdx) ?? [];
+    row.push(s);
+    byArt.set(s.articleIdx, row);
+  }
+  const keys = [...byArt.keys()].sort((a, b) => a - b);
+  const out: ExtractedSentence[] = [];
+  let round = 0;
+  while (out.length < max) {
+    let progressed = false;
+    for (const k of keys) {
+      const row = byArt.get(k)!;
+      const cell = row[round];
+      if (cell) {
+        out.push(cell);
+        progressed = true;
+        if (out.length >= max) break;
+      }
+    }
+    if (!progressed) break;
+    round++;
+  }
+  return out;
+}
+
 /* ───────── 격자 배치 알고리즘 ───────── */
 
 type WordEntry = { word: string; hint: string; definition: string; link: string };
@@ -930,27 +978,32 @@ export async function generatePuzzle(
 
   const client = new OpenAI({ apiKey });
 
-  const sentences = extractSentences(news.slice(0, NEWS_CONTEXT_COUNT));
+  const allSentences = extractSentences(news.slice(0, NEWS_CONTEXT_COUNT));
+  const sentences = limitSentencesBalanced(allSentences, MAX_PROMPT_SENTENCES);
   const sentenceMap = new Map<number, ExtractedSentence>();
   for (const s of sentences) sentenceMap.set(s.idx, s);
 
   const sentenceList = sentences
-    .map((s) => `[${s.idx} · 기사${s.articleIdx}] ${s.sentence}`)
+    .map(
+      (s) =>
+        `[${s.idx} · 기사${s.articleIdx}] ${clipSentenceForGptPrompt(
+          s.sentence,
+          MAX_CHARS_PER_PROMPT_SENTENCE
+        )}`
+    )
     .join("\n");
 
-  const response = await client.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      {
-        role: "system",
-        content: `너는 한국어 크로스워드 퍼즐 출제자다.
+  let response: OpenAI.Chat.Completions.ChatCompletion;
+  try {
+    response = await client.chat.completions.create({
+      model: "gpt-4o",
+      max_completion_tokens: GPT_MAX_COMPLETION_TOKENS,
+      messages: [
+        {
+          role: "system",
+          content: `너는 한국어 크로스워드 퍼즐 출제자다. 사용자가 번호 붙은 뉴스 문장 목록을 준다.
 
-사용자가 번호가 붙은 문장 목록을 제공한다. 이 문장들은 실제 뉴스 기사 원문에서 추출한 것이다.
-
-뉴스 기사의 순수한 내용만 사용하고, 코드나 HTML, 광고성 문구는 절대 힌트에 포함하지 마세요.
-
-힌트는 반드시 기사의 순수 본문 내용만 사용하고, 기자 이름, 날짜, 조회수, 언론사명은 절대 포함하지 마세요.
-힌트는 완전한 문장으로 50자 이상 작성해주세요.
+본문에서만 단어를 고르고, 코드·HTML·광고 문구는 쓰지 마라. definition에는 기자명·날짜·언론사명을 넣지 마라.
 
 너의 역할:
 1. 각 문장에서 크로스워드 정답으로 적합한 2~5글자 한국어 단어를 찾아라.
@@ -970,24 +1023,24 @@ export async function generatePuzzle(
 - word: 조사 없는 2~5글자 단어만. 문장 속에 그 형태가 부분 문자열로 포함되면 된다(예: 문장의 "사고가"에 대해 word는 "사고").
 - sentence_idx: 해당 단어가 포함된 문장의 번호 (사용자가 제공한 [번호]의 숫자만, 예: [12 · 기사3] → 12)
 - definition: 단어의 사전적 의미 (쉬운 말, 한 문장)`,
-      },
-      {
-        role: "user",
-        content: `아래 문장들에서 크로스워드 문항 ${GPT_WORD_COUNT}개를 만들어라.
-각 문항의 word는 해당 sentence_idx 문장 안에 등장하는 **조사 없는** 2~5글자 단어여야 한다(문장에 "단어+조사"로만 나와도, word는 어근만).
-단어들 사이에 공통 글자가 많은 조합을 우선 선택해라.
-**같은 기사(문장 앞의 "기사N"이 동일)에서 고르는 문항은 최대 ${MAX_WORDS_PER_ARTICLE}개**이며, 가능하면 여러 기사에 골고루 분산하라.
-
-뉴스 기사의 순수한 내용만 사용하고, 코드나 HTML, 광고성 문구는 절대 힌트에 포함하지 마세요.
-
-힌트는 반드시 기사의 순수 본문 내용만 사용하고, 기자 이름, 날짜, 조회수, 언론사명은 절대 포함하지 마세요.
-힌트는 완전한 문장으로 50자 이상 작성해주세요.
+        },
+        {
+          role: "user",
+          content: `아래 문장에서 문항 ${GPT_WORD_COUNT}개. word는 해당 sentence_idx 문장에 나오는 조사 없는 2~5글자 한글만. 교차를 위해 단어들끼리 같은 글자가 많게. 같은 기사(기사N 동일)는 최대 ${MAX_WORDS_PER_ARTICLE}개, 기사별로 골고루.
 
 ${sentenceList}`,
-      },
-    ],
-    response_format: { type: "json_object" },
-  });
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
+  } catch (e) {
+    if (e instanceof RateLimitError) {
+      throw new Error(
+        "AI 생성 한도에 잠시 걸렸습니다. 1~2분 뒤에 새로고침해 보세요. 계속되면 platform.openai.com 의 Rate limits에서 조직 TPM(분당 토큰)을 확인해 주세요."
+      );
+    }
+    throw e;
+  }
 
   const raw = response.choices[0]?.message?.content?.trim();
   if (!raw) {
