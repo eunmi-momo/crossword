@@ -436,7 +436,12 @@ export default function CrosswordGamePage() {
    * 다음 칸 포커스 직후 DOM/state 정리 (교차 정답 보존·유령 입력 제거).
    * 조합 중에는 유령 제거·복제 제거를 하지 않고 compositionend 후 한 번 더 실행.
    */
-  function syncCellAfterAutoAdvance(nextKey: CellKey, dupOf: string) {
+  function syncCellAfterAutoAdvance(
+    nextKey: CellKey,
+    dupOf: string,
+    /** 포커스 옮기기 직전 이 칸이 이미 정답(교차 등)이었을 때만 복제 제거 후 expected 복구 */
+    nextCellAlreadyCorrect = false
+  ) {
     const el2 = inputRefs.current[nextKey];
     if (!el2) return;
 
@@ -463,29 +468,41 @@ export default function CrosswordGamePage() {
       el2.addEventListener(
         "compositionend",
         () => {
-          queueMicrotask(() => syncCellAfterAutoAdvance(nextKey, dupOf));
+          queueMicrotask(() =>
+            syncCellAfterAutoAdvance(nextKey, dupOf, nextCellAlreadyCorrect)
+          );
         },
         { once: true }
       );
       return;
     }
 
-    // 이전 칸 글자가 교차칸에만 잘못 복제된 경우. 빈 칸으로 만들면 세로 등으로 이미 맞춘 정답까지 지워짐 → 정답이 있으면 expected로 복구
+    // 이전 칸 글자가 다음 칸에 잘못 복제된 경우. 교차로 이미 맞춰 둔 칸만 expected 복구, 나머지는 비워 정답 미리 노출 방지
     if (
       dupOf &&
       stateVal === dupOf &&
       expected &&
       stateVal !== expected
     ) {
-      setInputs((prev) => ({ ...prev, [nextKey]: expected }));
-      el2.value = expected;
+      if (nextCellAlreadyCorrect) {
+        setInputs((prev) => ({ ...prev, [nextKey]: expected }));
+        el2.value = expected;
+      } else {
+        el2.value = "";
+        setInputs((prev) => ({ ...prev, [nextKey]: "" }));
+      }
       return;
     }
 
     if (!stateVal && dom) {
       if (dupOf && dom === dupOf && expected && dom !== expected) {
-        setInputs((prev) => ({ ...prev, [nextKey]: expected }));
-        el2.value = expected;
+        if (nextCellAlreadyCorrect) {
+          setInputs((prev) => ({ ...prev, [nextKey]: expected }));
+          el2.value = expected;
+        } else {
+          el2.value = "";
+          setInputs((prev) => ({ ...prev, [nextKey]: "" }));
+        }
         return;
       }
       el2.value = "";
@@ -511,6 +528,12 @@ export default function CrosswordGamePage() {
     const nextKey = `${nr},${nc}` as CellKey;
     lastEditedCellRef.current = null;
     const dupOf = justTypedChar.normalize("NFC");
+    const expectedNext = (solution.get(nextKey) ?? "").normalize("NFC");
+    const stateBeforeFocus = (inputsRef.current[nextKey] ?? "").normalize(
+      "NFC"
+    );
+    const nextCellAlreadyCorrect =
+      expectedNext.length > 0 && stateBeforeFocus === expectedNext;
 
     requestAnimationFrame(() => {
       const el = inputRefs.current[nextKey];
@@ -519,7 +542,7 @@ export default function CrosswordGamePage() {
       }
       requestAnimationFrame(() => {
         queueMicrotask(() => {
-          syncCellAfterAutoAdvance(nextKey, dupOf);
+          syncCellAfterAutoAdvance(nextKey, dupOf, nextCellAlreadyCorrect);
         });
       });
     });
