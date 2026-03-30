@@ -218,9 +218,14 @@ export default function HomePageClient() {
             <CrosswordBrandLogo />
           </div>
 
-          <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-white/55 sm:mt-5 sm:text-[0.95rem]">
-            단 5분, 게임처럼 즐기다 보면 어느새 시사 상식 마스터!
-          </p>
+          <div className="mx-auto mt-4 max-w-md sm:mt-5">
+            <p className="text-sm leading-relaxed text-emerald-200/95 drop-shadow-[0_0_14px_rgba(52,211,153,0.45)] sm:text-[0.95rem]">
+              게임처럼 즐기다 보면 어느새 시사 상식 마스터!
+            </p>
+            <p className="mt-2 text-xs font-semibold leading-snug text-white/80 sm:text-[0.8125rem]">
+              매일 새로운 퀴즈가 찾아옵니다
+            </p>
+          </div>
 
           <MiniBoardIllustration />
 

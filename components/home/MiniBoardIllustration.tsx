@@ -10,7 +10,7 @@ type CellKind =
 
 const ROWS: CellKind[][] = [
   ["block", "block", "letter-green", "letter", "letter"],
-  ["letter", "letter-green", "letter-purple", "letter-green", "block"],
+  ["letter-green", "letter-green", "letter-purple", "letter-green", "block"],
   ["block", "letter-green", "block", "block", "block"],
   ["block", "block", "block", "letter", "letter"],
   ["block", "block", "block", "block", "cursor"],
@@ -92,17 +92,6 @@ export function MiniBoardIllustration() {
             })
           )}
         </div>
-      </div>
-
-      {/* 콤보 위젯 */}
-      <div className="mini-combo glass-combo-pill" aria-hidden>
-        <span className="text-base leading-none">⚡</span>
-        <span className="text-xs font-bold tabular-nums">×3</span>
-        <span className="mini-combo-sparkles" aria-hidden>
-          <span className="mini-dot" />
-          <span className="mini-dot" />
-          <span className="mini-dot" />
-        </span>
       </div>
     </div>
   );

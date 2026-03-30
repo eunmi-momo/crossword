@@ -14,7 +14,7 @@ export function CrosswordBrandLogo() {
         <div className="cb-cell cb-cell--ghost" aria-hidden />
         <div className="cb-cell cb-cell--ghost" aria-hidden />
         <div
-          className="cb-tile cb-tile--gradient cb-tile-flip"
+          className="cb-tile cb-tile--green cb-tile-flip"
           style={{ animationDelay: "0ms" }}
         >
           <span className="cb-badge">1</span>

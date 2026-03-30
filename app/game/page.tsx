@@ -771,14 +771,14 @@ export default function CrosswordGamePage() {
             </Link>
           </div>
           <div className="mt-4 text-center">
-            <p className="text-sm font-semibold uppercase tracking-widest text-[var(--primary)] sm:text-base">
+            <p className="text-base font-semibold uppercase tracking-widest text-[var(--primary)] sm:text-lg">
               오늘의 챌린지
             </p>
-            <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">
+            <h1 className="mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">
               뉴스 크로스워드
             </h1>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              단 5분, 게임처럼 즐기다 보면 어느새 상식 마스터!
+            <p className="mt-2 text-xs leading-snug text-[var(--muted)] sm:mt-2.5 sm:text-sm">
+              오늘도 AI가 뉴스를 열심히 읽고 출제했어요 📰
             </p>
           </div>
         </header>
